@@ -26,8 +26,16 @@
             uv
             python3
             ruff
-            pyright
           ];
+
+          env.LD_LIBRARY_PATH =
+            with pkgs;
+            lib.makeLibraryPath [
+              stdenv.cc.cc.lib
+              libxcb
+              libGL
+              glib
+            ];
         };
       }
     );

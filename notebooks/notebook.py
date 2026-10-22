@@ -104,7 +104,7 @@ def _(mo):
 def _(os, pd):
     # TODO: point `base_dir` to the folder that contains one sub-folder per activity.
     # The provided example is stored in `data/example_activity`.
-    base_dir = 'data'
+    base_dir = './data/'
     recordings = {}
     folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f)) and (not f.startswith('.'))]
     print('List of activities:')
@@ -112,13 +112,18 @@ def _(os, pd):
         print(this_folder)
         data_csv = os.path.join(base_dir, this_folder, 'Raw Data.csv')
         if os.path.isfile(data_csv):
-            _data_df = pd.read_csv(data_csv)
-            _data_df.set_index('Time (s)', inplace=True)
-            recordings[this_folder] = _data_df
+            try:
+                _data_df = pd.read_csv(data_csv, sep='\t')
+                _data_df.set_index('Time (s)', inplace=True)
+            except KeyError as e:
+                _data_df = pd.read_csv(data_csv, sep=',')
+                _data_df.set_index('Time (s)', inplace=True)
+            finally:
+                recordings[this_folder] = _data_df
         else:  # Check that the file exists before reading it
             print(f"Warning: '{data_csv}' not found. Skipping...")
     labels = list(recordings.keys())
-    print('\nChannels:', list(recordings[labels[0]].columns))  # Use the time column as index
+    print('\nChannels:', list(recordings[labels[0]].columns))
     return labels, recordings
 
 
@@ -127,6 +132,13 @@ def _(mo):
     mo.md(r"""
     ### Visualisation of the dataframe
     """)
+    return
+
+
+@app.cell
+def _(recordings):
+    for key, dataset in recordings.items():
+        dataset.sort_values(by='Time (s)' ,inplace=True)
     return
 
 
@@ -156,7 +168,7 @@ def _(mo):
 @app.cell
 def _(plt, recordings):
     # TODO: set these two variables for your data
-    activity_of_interest = 'example_activity'  # must be one of `labels`
+    activity_of_interest = 'hammer'  # must be one of `labels`
     _data_df = recordings[activity_of_interest]
     _colors = ['blue', 'orange', 'green', 'red']
     _fig, axs = plt.subplots(len(_data_df.columns), 1, figsize=(15, 8), sharex=True, sharey=True)
@@ -183,7 +195,7 @@ def _(mo):
 @app.cell
 def _(plt, recordings):
     # TODO: choose the channel you want to compare across activities
-    measurement_of_interest = ''  # one of the channels above
+    measurement_of_interest = 'Linear Acceleration x (m/s^2)'  # one of the channels above
     _fig, axes = plt.subplots(len(recordings), 1, figsize=(15, 2 * len(recordings)), sharex=True, sharey=True)
     for _i, (activity, _data_df) in enumerate(recordings.items()):
         ax = axes[_i]
@@ -216,7 +228,7 @@ def _(mo):
 @app.cell
 def _(np, recordings):
     # TODO: choose these values and justify your choice in the reflection cell below.
-    duration_seconds = 20  # window length in seconds
+    duration_seconds = 5  # window length in seconds
     overlap = 0.5  # fraction of overlap (0 = no overlap)
     if duration_seconds <= 0 or not 0 <= overlap < 1:
         raise ValueError('Choose a positive duration and overlap between 0 and 1.')
@@ -231,7 +243,7 @@ def _(np, recordings):
             raise ValueError(f'Recording {_label!r} is too short for this window size.')
         n_sec_recordings[_label] = np.stack([values[start:start + rows_per_window] for start in starts], axis=2)
         print(f'{_label}: {n_sec_recordings[_label].shape}')  # Shape: [rows/window, channels, number of windows]
-    return (n_sec_recordings,)
+    return n_sec_recordings, sampling_frequency
 
 
 @app.cell(hide_code=True)
@@ -241,7 +253,7 @@ def _(mo):
     the number of windows when you increase the overlap? What could be the risk of using windows that
     overlap, and what consequence does this have for evaluating your classifier?
 
-    *Write your answer here.*
+    ## TODO
     """)
     return
 
@@ -264,12 +276,115 @@ def _(mo):
 
 
 @app.cell
-def _(n_sec_recordings):
+def _():
+    from scipy.stats import skew, kurtosis
+    from scipy.signal import welch
+
+    return kurtosis, skew, welch
+
+
+@app.cell
+def _(kurtosis, n_sec_recordings, np, sampling_frequency, skew, welch):
+    def extract_window_features(X, fs):
+        """
+        X: np.array of shape [n_samples, n_channels, n_windows]
+        Returns:
+            F: np.array of shape [n_windows, n_features]
+            names: list of feature names
+        """
+        n_samples, n_channels, n_windows = X.shape
+        eps = 1e-12
+
+        feats = []
+        names = []
+
+        def add(name, arr_wc):
+            # arr_wc has shape [n_windows, n_channels]
+            feats.append(arr_wc)
+            for c in range(n_channels):
+                names.append(f"{name}_ch{c}")
+
+        # ---------- Time-domain features ----------
+        add("mean", np.mean(X, axis=0).T)
+        add("std", np.std(X, axis=0).T)
+        add("min", np.min(X, axis=0).T)
+        add("max", np.max(X, axis=0).T)
+
+        # Higher-order statistics
+        sk = np.empty((n_windows, n_channels))
+        ku = np.empty((n_windows, n_channels))
+        pk = np.empty((n_windows, n_channels))
+        for w in range(n_windows):
+            for c in range(n_channels):
+                x = X[:, c, w]
+                sk[w, c] = skew(x)
+                ku[w, c] = kurtosis(x)
+                pk[w, c] = np.max(x) - np.min(x)
+        add("skewness", sk)
+        add("kurtosis", ku)
+        add("peak_to_peak", pk)
+
+        # ---------- Frequency-domain features ----------
+        dom_f = np.empty((n_windows, n_channels))
+        spec_centroid = np.empty((n_windows, n_channels))
+        spec_entropy = np.empty((n_windows, n_channels))
+        band_low = np.empty((n_windows, n_channels))
+        band_mid = np.empty((n_windows, n_channels))
+        band_high = np.empty((n_windows, n_channels))
+
+        nperseg = min(n_samples, 256)
+        for w in range(n_windows):
+            x = X[:, :, w]  # [n_samples, n_channels]
+            f, P = welch(x, fs=fs, axis=0, nperseg=nperseg)
+            P = P + eps
+            Pn = P / np.sum(P, axis=0, keepdims=True)
+
+            # Ignore DC for dominant frequency
+            dom_idx = np.argmax(P[1:, :], axis=0) + 1
+            dom_f[w, :] = f[dom_idx]
+
+            spec_centroid[w, :] = np.sum(f[:, None] * Pn, axis=0)
+            spec_entropy[w, :] = -np.sum(Pn * np.log(Pn), axis=0) / np.log(len(f))
+
+            # Adjust bands if your activities have different main frequencies
+            low_mask = (f >= 0.5) & (f < 3.0)
+            mid_mask = (f >= 3.0) & (f < 8.0)
+            high_mask = (f >= 8.0) & (f <= 15.0)
+
+            band_low[w, :] = np.sum(P[low_mask, :], axis=0)
+            band_mid[w, :] = np.sum(P[mid_mask, :], axis=0)
+            band_high[w, :] = np.sum(P[high_mask, :], axis=0)
+
+        add("dominant_freq", dom_f)
+        add("spectral_centroid", spec_centroid)
+        add("spectral_entropy", spec_entropy)
+        add("power_0.5_3Hz", band_low)
+        add("power_3_8Hz", band_mid)
+        add("power_8_15Hz", band_high)
+
+        F = np.concatenate(feats, axis=1)
+        return F, names
+
+
     features = {}
-    for _label in n_sec_recordings.keys():
-        X = n_sec_recordings[_label]  # [rows_per_window, n_channels, n_windows]
-        features[_label] = None  # --- TODO (you write this) ---  # Create a feature vector for each window by extracting features from every channel.  #  # Choose features that describe each signal window, for example from:  #   - the time domain (statistics of the amplitude values),  #   - the frequency domain (content of the spectrum),  #   - or any other representation you find relevant.  #  # You can either:  #   (a) implement the features yourself with NumPy/SciPy, or  #   (b) use a dedicated library such as TSFEL (https://tsfel.readthedocs.io),  #       e.g. tsfel.get_features_by_domain() + tsfel.time_series_features_extractor(...)  #  # Concatenate the features of all channels so that:  #     features[label].shape == (n_windows, n_features)
+    feature_names = None
+
+    for _label, X in n_sec_recordings.items():
+
+        F, names = extract_window_features(X, sampling_frequency)
+
+        features[_label] = F
+        if feature_names is None:
+            feature_names = names
+
+        print(_label, features[_label].shape)
     return (features,)
+
+
+@app.cell
+def _(features):
+    features["hammer"]
+    return
 
 
 @app.cell(hide_code=True)
@@ -340,31 +455,37 @@ def _(mo):
 def _(PCA, StandardScaler, data_input, data_output, label_dict, np, plt):
     scaler = StandardScaler()
     data_input_norm = scaler.fit_transform(data_input)
+
     pca = PCA(n_components=min(data_input_norm.shape))
-    # Fit PCA using the largest valid number of components to inspect the full curve.
     results_pca = pca.fit_transform(data_input_norm)
-    plt.figure(figsize=(10, 5))
-    plt.bar(x=np.arange(len(pca.explained_variance_ratio_)), height=pca.explained_variance_ratio_)
-    plt.title('Explained variance per component')
-    plt.ylabel('Variance ratio')
-    plt.xlabel('Component')
-    plt.grid(axis='y')
-    plt.show()
+
     cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
     n95 = int(np.searchsorted(cumulative_variance, 0.95) + 1)
-    print(f'The first two components keep {100 * cumulative_variance[1]:.1f}% of the variance.')
-    print(f'{n95} components are needed to keep 95% of the variance.')
+    print(f"The first three components keep {100 * cumulative_variance[2]:.1f}% of the variance.")
+    print(f"{n95} components are needed to keep 95% of the variance.")
+
     _colors = plt.cm.rainbow(np.linspace(0, 1, len(label_dict)))
-    plt.figure(figsize=(10, 6))
+
+    fig = plt.figure(figsize=(10, 7))
+    _ax = fig.add_subplot(111, projection="3d")
+
     for _i in range(len(label_dict)):
         _points = results_pca[data_output == _i, :]
-        plt.scatter(_points[:, 0], _points[:, 1], s=12, alpha=0.7, c=[_colors[_i]], label=label_dict[_i])
-    # Plot the first two components, with one colour for each activity.
-    plt.title('PCA of the window features')
-    plt.xlabel('PC 1')
-    plt.ylabel('PC 2')
-    plt.legend()
-    plt.grid()
+        _ax.scatter(
+            _points[:, 0],
+            _points[:, 1],
+            _points[:, 2],
+            s=12,
+            alpha=0.7,
+            c=[_colors[_i]],
+            label=label_dict[_i],
+        )
+
+    _ax.set_title("PCA of the window features")
+    _ax.set_xlabel("PC 1")
+    _ax.set_ylabel("PC 2")
+    _ax.set_zlabel("PC 3")
+    _ax.legend()
     plt.show()
     return (data_input_norm,)
 
@@ -391,7 +512,7 @@ def _(mo):
 @app.cell
 def _(TSNE, data_input_norm, data_output, label_dict, np, plt):
     # TODO: try different perplexity value
-    perplexity = 30
+    perplexity = 10
     tsne = TSNE(n_components=2, perplexity=perplexity, random_state=0, init='pca')
     results_tsne = tsne.fit_transform(data_input_norm)
     _colors = plt.cm.rainbow(np.linspace(0, 1, len(label_dict)))
