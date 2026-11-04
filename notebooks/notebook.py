@@ -70,6 +70,7 @@ def _():
     from sklearn.neural_network import MLPClassifier
     from sklearn.model_selection import cross_val_score, train_test_split
     from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
+    from sklearn.pipeline import make_pipeline
 
     # '%matplotlib inline' command supported automatically in marimo
     return PCA, StandardScaler, TSNE, np, os, pd, plt
@@ -168,7 +169,7 @@ def _(mo):
 @app.cell
 def _(plt, recordings):
     # TODO: set these two variables for your data
-    activity_of_interest = 'hammer'  # must be one of `labels`
+    activity_of_interest = 'subway'  # must be one of `labels`
     _data_df = recordings[activity_of_interest]
     _colors = ['blue', 'orange', 'green', 'red']
     _fig, axs = plt.subplots(len(_data_df.columns), 1, figsize=(15, 8), sharex=True, sharey=True)
@@ -210,6 +211,28 @@ def _(plt, recordings):
     return
 
 
+@app.cell
+def _(duration_seconds, mo):
+    mo.md(f"Remove the first and last {duration_seconds} seconds of each recording to avoid noise and transitions between activities.")
+    return
+
+
+@app.cell
+def _(recordings):
+    for _label, _df in recordings.items():
+        _df.drop(_df[_df.index < 5].index, inplace=True)
+        _df.drop(_df[_df.index > (_df.index.max() - 5)].index, inplace=True)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Remove the first and last
+    """)
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -228,6 +251,9 @@ def _(mo):
 @app.cell
 def _(np, recordings):
     # TODO: choose these values and justify your choice in the reflection cell below.
+    # Remove the first and last 5 seconds of each recording to avoid noise and transitions between activities.
+
+
     duration_seconds = 5  # window length in seconds
     overlap = 0.5  # fraction of overlap (0 = no overlap)
     if duration_seconds <= 0 or not 0 <= overlap < 1:
@@ -243,7 +269,7 @@ def _(np, recordings):
             raise ValueError(f'Recording {_label!r} is too short for this window size.')
         n_sec_recordings[_label] = np.stack([values[start:start + rows_per_window] for start in starts], axis=2)
         print(f'{_label}: {n_sec_recordings[_label].shape}')  # Shape: [rows/window, channels, number of windows]
-    return n_sec_recordings, sampling_frequency
+    return duration_seconds, n_sec_recordings, sampling_frequency
 
 
 @app.cell(hide_code=True)
@@ -453,6 +479,7 @@ def _(mo):
 
 @app.cell
 def _(PCA, StandardScaler, data_input, data_output, label_dict, np, plt):
+
     scaler = StandardScaler()
     data_input_norm = scaler.fit_transform(data_input)
 
@@ -467,14 +494,13 @@ def _(PCA, StandardScaler, data_input, data_output, label_dict, np, plt):
     _colors = plt.cm.rainbow(np.linspace(0, 1, len(label_dict)))
 
     fig = plt.figure(figsize=(10, 7))
-    _ax = fig.add_subplot(111, projection="3d")
+    _ax = fig.add_subplot(111)
 
     for _i in range(len(label_dict)):
         _points = results_pca[data_output == _i, :]
         _ax.scatter(
             _points[:, 0],
             _points[:, 1],
-            _points[:, 2],
             s=12,
             alpha=0.7,
             c=[_colors[_i]],
@@ -484,9 +510,8 @@ def _(PCA, StandardScaler, data_input, data_output, label_dict, np, plt):
     _ax.set_title("PCA of the window features")
     _ax.set_xlabel("PC 1")
     _ax.set_ylabel("PC 2")
-    _ax.set_zlabel("PC 3")
     _ax.legend()
-    plt.show()
+    fig
     return (data_input_norm,)
 
 
@@ -599,13 +624,16 @@ def _(mo):
     return
 
 
-@app.cell
-def _():
+app._unparsable_cell(
+    r"""
     # --- TODO (you write this) ---
     # 1. Choose a value of K and justify it (try several values).
     # 2. Evaluate your model.
     # 3. Report the accuracy.
-    return
+     k = 10
+    """,
+    name="_"
+)
 
 
 @app.cell(hide_code=True)
