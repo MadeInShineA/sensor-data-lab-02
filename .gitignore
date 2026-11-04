@@ -2,3 +2,4 @@
 .envrc
 *__marimo__/
 .venv/
+*__pycache__/
