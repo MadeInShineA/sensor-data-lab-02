@@ -55,22 +55,32 @@ def _(mo):
 def _():
     # '%pip install numpy pandas matplotlib' command supported automatically in marimo
 
-    from pathlib import Path
     import os
+    from pathlib import Path
+
     import numpy as np
     import pandas as pd
-
     from matplotlib import pyplot as plt
-
     from sklearn.decomposition import PCA
-    from sklearn.manifold import TSNE
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.neighbors import KNeighborsClassifier
     from sklearn.ensemble import RandomForestClassifier
+    from sklearn.manifold import TSNE
+    from sklearn.metrics import (
+        ConfusionMatrixDisplay,
+        accuracy_score,
+        classification_report,
+        confusion_matrix,
+        f1_score,
+    )
+    from sklearn.model_selection import (
+        GridSearchCV,
+        GroupKFold,
+        cross_val_score,
+        train_test_split,
+    )
+    from sklearn.neighbors import KNeighborsClassifier
     from sklearn.neural_network import MLPClassifier
-    from sklearn.model_selection import cross_val_score, train_test_split, GridSearchCV, GroupKFold
-    from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report, accuracy_score, f1_score
     from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
 
     # '%matplotlib inline' command supported automatically in marimo
     return (
@@ -124,26 +134,30 @@ def _(mo):
 def _(os, pd):
     # TODO: point `base_dir` to the folder that contains one sub-folder per activity.
     # The provided example is stored in `data/example_activity`.
-    base_dir = './data/'
+    base_dir = "./data/part-1/"
     recordings = {}
-    folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f)) and (not f.startswith('.'))]
-    print('List of activities:')
+    folders = [
+        f
+        for f in os.listdir(base_dir)
+        if os.path.isdir(os.path.join(base_dir, f)) and (not f.startswith("."))
+    ]
+    print("List of activities:")
     for this_folder in folders:
         print(this_folder)
-        data_csv = os.path.join(base_dir, this_folder, 'Raw Data.csv')
+        data_csv = os.path.join(base_dir, this_folder, "Raw Data.csv")
         if os.path.isfile(data_csv):
             try:
-                _data_df = pd.read_csv(data_csv, sep='\t')
-                _data_df.set_index('Time (s)', inplace=True)
+                _data_df = pd.read_csv(data_csv, sep="\t")
+                _data_df.set_index("Time (s)", inplace=True)
             except KeyError as e:
-                _data_df = pd.read_csv(data_csv, sep=',')
-                _data_df.set_index('Time (s)', inplace=True)
+                _data_df = pd.read_csv(data_csv, sep=",")
+                _data_df.set_index("Time (s)", inplace=True)
             finally:
                 recordings[this_folder] = _data_df
         else:  # Check that the file exists before reading it
             print(f"Warning: '{data_csv}' not found. Skipping...")
     labels = list(recordings.keys())
-    print('\nChannels:', list(recordings[labels[0]].columns))
+    print("\nChannels:", list(recordings[labels[0]].columns))
     return labels, recordings
 
 
@@ -158,13 +172,13 @@ def _(mo):
 @app.cell
 def _(recordings):
     for key, dataset in recordings.items():
-        dataset.sort_values(by='Time (s)' ,inplace=True)
+        dataset.sort_values(by="Time (s)", inplace=True)
     return
 
 
 @app.cell
 def _(labels, recordings):
-    print(labels[0] + ':')
+    print(labels[0] + ":")
     recordings[labels[0]].head()
     return
 
@@ -188,18 +202,20 @@ def _(mo):
 @app.cell
 def _(plt, recordings):
     # TODO: set these two variables for your data
-    activity_of_interest = 'subway'  # must be one of `labels`
+    activity_of_interest = "subway"  # must be one of `labels`
     _data_df = recordings[activity_of_interest]
-    _colors = ['blue', 'orange', 'green', 'red']
-    _fig, axs = plt.subplots(len(_data_df.columns), 1, figsize=(15, 8), sharex=True, sharey=True)
+    _colors = ["blue", "orange", "green", "red"]
+    _fig, axs = plt.subplots(
+        len(_data_df.columns), 1, figsize=(15, 8), sharex=True, sharey=True
+    )
     # A colour for each subplot
     for _i, (column, color) in enumerate(zip(_data_df.columns, _colors)):
         axs[_i].plot(_data_df.index, _data_df[column], label=column, color=color)
-        axs[_i].set_ylabel('(m/s^2)')
-        axs[_i].legend(loc='upper right')
+        axs[_i].set_ylabel("(m/s^2)")
+        axs[_i].legend(loc="upper right")
         axs[_i].grid(True)
-    axs[-1].set_xlabel('Time (s)')
-    plt.suptitle('Acceleration vs Time. ' + activity_of_interest)
+    axs[-1].set_xlabel("Time (s)")
+    plt.suptitle("Acceleration vs Time. " + activity_of_interest)
     plt.show()
     return
 
@@ -215,16 +231,20 @@ def _(mo):
 @app.cell
 def _(plt, recordings):
     # TODO: choose the channel you want to compare across activities
-    measurement_of_interest = 'Linear Acceleration x (m/s^2)'  # one of the channels above
-    _fig, axes = plt.subplots(len(recordings), 1, figsize=(15, 2 * len(recordings)), sharex=True, sharey=True)
+    measurement_of_interest = (
+        "Linear Acceleration x (m/s^2)"  # one of the channels above
+    )
+    _fig, axes = plt.subplots(
+        len(recordings), 1, figsize=(15, 2 * len(recordings)), sharex=True, sharey=True
+    )
     for _i, (activity, _data_df) in enumerate(recordings.items()):
         ax = axes[_i]
-        ax.plot(_data_df.index, _data_df[measurement_of_interest], color='purple')
-        ax.set_title(f'{activity}')
-        ax.set_xlabel('Time (s)')
-        ax.set_ylabel('Acceleration (m/s^2)')
+        ax.plot(_data_df.index, _data_df[measurement_of_interest], color="purple")
+        ax.set_title(f"{activity}")
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Acceleration (m/s^2)")
         ax.grid(True)
-    _fig.suptitle(measurement_of_interest + ' for all activities', fontsize=16)
+    _fig.suptitle(measurement_of_interest + " for all activities", fontsize=16)
     plt.tight_layout()
     plt.show()
     return
@@ -276,11 +296,10 @@ def _(np, recordings_cleaned):
     # TODO: choose these values and justify your choice in the reflection cell below.
     # Remove the first and last 5 seconds of each recording to avoid noise and transitions between activities.
 
-
     duration_seconds = 5  # window length in seconds
     overlap = 0.5  # fraction of overlap (0 = no overlap)
     if duration_seconds <= 0 or not 0 <= overlap < 1:
-        raise ValueError('Choose a positive duration and overlap between 0 and 1.')
+        raise ValueError("Choose a positive duration and overlap between 0 and 1.")
     n_sec_recordings = {}
     for _label, df in recordings_cleaned.items():
         sampling_frequency = 1 / np.mean(np.diff(df.index.values))
@@ -289,9 +308,13 @@ def _(np, recordings_cleaned):
         values = df.values
         starts = range(0, len(values) - rows_per_window + 1, step)
         if rows_per_window < 1 or len(starts) == 0:
-            raise ValueError(f'Recording {_label!r} is too short for this window size.')
-        n_sec_recordings[_label] = np.stack([values[start:start + rows_per_window] for start in starts], axis=2)
-        print(f'{_label}: {n_sec_recordings[_label].shape}')  # Shape: [rows/window, channels, number of windows]
+            raise ValueError(f"Recording {_label!r} is too short for this window size.")
+        n_sec_recordings[_label] = np.stack(
+            [values[start : start + rows_per_window] for start in starts], axis=2
+        )
+        print(
+            f"{_label}: {n_sec_recordings[_label].shape}"
+        )  # Shape: [rows/window, channels, number of windows]
     return duration_seconds, n_sec_recordings, overlap, sampling_frequency
 
 
@@ -330,8 +353,8 @@ def _(mo):
 
 @app.cell
 def _():
-    from scipy.stats import skew, kurtosis
     from scipy.signal import welch
+    from scipy.stats import kurtosis, skew
 
     return kurtosis, skew, welch
 
@@ -418,12 +441,10 @@ def _(kurtosis, n_sec_recordings, np, sampling_frequency, skew, welch):
         F = np.concatenate(feats, axis=1)
         return F, names
 
-
     features = {}
     feature_names = None
 
     for _label, X in n_sec_recordings.items():
-
         F, names = extract_window_features(X, sampling_frequency)
 
         features[_label] = F
@@ -488,6 +509,7 @@ def _(
     # Illustrate skewness, kurtosis, peak to peak and each frequency-domain feature
     # on real windows (absolute acceleration channel)
     _abs_ch = 3
+
     def _window_psd(label):
         _X = n_sec_recordings[label]
         _x = _X[:, _abs_ch, _X.shape[2] // 2]  # window in the middle of the recording
@@ -513,8 +535,16 @@ def _(
         return _order[0], _order[-1]
 
     def _value_box(ax, text, color):
-        ax.text(0.98, 0.92, text, transform=ax.transAxes, ha="right", va="top", fontsize=8,
-                bbox=dict(boxstyle="round", facecolor="white", alpha=0.85, edgecolor=color))
+        ax.text(
+            0.98,
+            0.92,
+            text,
+            transform=ax.transAxes,
+            ha="right",
+            va="top",
+            fontsize=8,
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.85, edgecolor=color),
+        )
 
     def _window_signal(label):
         _X = n_sec_recordings[label]
@@ -533,29 +563,63 @@ def _(
     for _ax, _label, _color in zip(_axes, _extremes(skew), ["tab:blue", "tab:orange"]):
         _x = _window_signal(_label)[1]
         _ax.hist(_x, bins=40, color=_color, alpha=0.85)
-        _ax.axvline(np.mean(_x), color="black", linestyle="--", linewidth=1.2, label="mean")
-        _ax.axvline(np.median(_x), color="red", linestyle=":", linewidth=1.5, label="median")
-        _ax.set_title(f"{_label}: skewness = {skew(_x):.2f}", fontsize=10, color=_color, fontweight="bold")
+        _ax.axvline(
+            np.mean(_x), color="black", linestyle="--", linewidth=1.2, label="mean"
+        )
+        _ax.axvline(
+            np.median(_x), color="red", linestyle=":", linewidth=1.5, label="median"
+        )
+        _ax.set_title(
+            f"{_label}: skewness = {skew(_x):.2f}",
+            fontsize=10,
+            color=_color,
+            fontweight="bold",
+        )
         _ax.set_ylabel("Number of\nsamples")
         _ax.grid(True, alpha=0.4)
         _ax.legend(fontsize=7)
     _axes[-1].set_xlabel("Absolute acceleration (m/s^2)")
     _fig.tight_layout()
-    _rows.append(("Skewness", _to_img(_fig), "How lopsided the distribution of the values is: close to 0 when symmetric, large and positive when there is a long tail of high values (mean pulled away from the median)."))
+    _rows.append(
+        (
+            "Skewness",
+            _to_img(_fig),
+            "How lopsided the distribution of the values is: close to 0 when symmetric, large and positive when there is a long tail of high values (mean pulled away from the median).",
+        )
+    )
 
     # Kurtosis: smooth signal vs signal with rare large spikes
     _fig, _axes = plt.subplots(2, 1, figsize=(4.8, 4.2), sharex=True)
-    for _ax, _label, _color in zip(_axes, _extremes(kurtosis), ["tab:blue", "tab:orange"]):
+    for _ax, _label, _color in zip(
+        _axes, _extremes(kurtosis), ["tab:blue", "tab:orange"]
+    ):
         _t, _x = _window_signal(_label)
         _ax.plot(_t, _x, color=_color, linewidth=1)
-        _ax.axhspan(np.mean(_x) - 3 * np.std(_x), np.mean(_x) + 3 * np.std(_x), color="grey", alpha=0.2, label="mean ± 3 std")
-        _ax.set_title(f"{_label}: kurtosis = {kurtosis(_x):.2f}", fontsize=10, color=_color, fontweight="bold")
+        _ax.axhspan(
+            np.mean(_x) - 3 * np.std(_x),
+            np.mean(_x) + 3 * np.std(_x),
+            color="grey",
+            alpha=0.2,
+            label="mean ± 3 std",
+        )
+        _ax.set_title(
+            f"{_label}: kurtosis = {kurtosis(_x):.2f}",
+            fontsize=10,
+            color=_color,
+            fontweight="bold",
+        )
         _ax.set_ylabel("Acceleration\n(m/s^2)")
         _ax.grid(True, alpha=0.4)
         _ax.legend(fontsize=7, loc="upper right")
     _axes[-1].set_xlabel("Time in the window (s)")
     _fig.tight_layout()
-    _rows.append(("Kurtosis", _to_img(_fig), "How much of the signal comes from rare extreme peaks: around 0 or below for a smooth, regular signal, high when short spikes stick out far from the rest (outside the grey band). scipy returns the excess kurtosis, so a normal distribution gives 0."))
+    _rows.append(
+        (
+            "Kurtosis",
+            _to_img(_fig),
+            "How much of the signal comes from rare extreme peaks: around 0 or below for a smooth, regular signal, high when short spikes stick out far from the rest (outside the grey band). scipy returns the excess kurtosis, so a normal distribution gives 0.",
+        )
+    )
 
     # Peak to peak
     _fig, _axes = _two_panels(sharey=True)
@@ -565,14 +629,29 @@ def _(
         _ax.axhline(_x.max(), color="red", linestyle="--", linewidth=1)
         _ax.axhline(_x.min(), color="green", linestyle="--", linewidth=1)
         _tx = _t[len(_t) // 2]
-        _ax.annotate("", xy=(_tx, _x.max()), xytext=(_tx, _x.min()),
-                     arrowprops=dict(arrowstyle="<->", color="black", linewidth=1.5))
-        _ax.set_title(f"{_label}: peak to peak = {np.ptp(_x):.1f} m/s^2", fontsize=10, color=_color, fontweight="bold")
+        _ax.annotate(
+            "",
+            xy=(_tx, _x.max()),
+            xytext=(_tx, _x.min()),
+            arrowprops=dict(arrowstyle="<->", color="black", linewidth=1.5),
+        )
+        _ax.set_title(
+            f"{_label}: peak to peak = {np.ptp(_x):.1f} m/s^2",
+            fontsize=10,
+            color=_color,
+            fontweight="bold",
+        )
         _ax.set_ylabel("Acceleration\n(m/s^2)")
         _ax.grid(True, alpha=0.4)
     _axes[-1].set_xlabel("Time in the window (s)")
     _fig.tight_layout()
-    _rows.append(("Peak to peak", _to_img(_fig), "The full range of the signal in the window (max − min, between the dashed lines): how violent the strongest movement is."))
+    _rows.append(
+        (
+            "Peak to peak",
+            _to_img(_fig),
+            "The full range of the signal in the window (max − min, between the dashed lines): how violent the strongest movement is.",
+        )
+    )
 
     # Dominant frequency
     def _fdom(f, P):
@@ -583,13 +662,24 @@ def _(
         _f, _P = _window_psd(_label)
         _ax.plot(_f, _P, color=_color, linewidth=1.5)
         _ax.axvline(_fdom(_f, _P), color="red", linestyle="--", linewidth=1.2)
-        _ax.set_title(f"{_label}: dominant frequency = {_fdom(_f, _P):.2f} Hz", fontsize=10, color=_color, fontweight="bold")
+        _ax.set_title(
+            f"{_label}: dominant frequency = {_fdom(_f, _P):.2f} Hz",
+            fontsize=10,
+            color=_color,
+            fontweight="bold",
+        )
         _ax.set_ylabel("Power spectral\ndensity")
         _ax.grid(True, alpha=0.4)
     _axes[-1].set_xlim(0, 20)
     _axes[-1].set_xlabel("Frequency (Hz)")
     _fig.tight_layout()
-    _rows.append(("Dominant frequency", _to_img(_fig), "The highest peak of the spectrum (red line): the main rhythm of the movement."))
+    _rows.append(
+        (
+            "Dominant frequency",
+            _to_img(_fig),
+            "The highest peak of the spectrum (red line): the main rhythm of the movement.",
+        )
+    )
 
     # Spectral centroid
     def _centroid(f, P):
@@ -604,13 +694,24 @@ def _(
         _ax.plot(_f, _P, color=_color, linewidth=1.5)
         _ax.fill_between(_f, 0, _P, color=_color, alpha=0.25)
         _ax.axvline(_c, color="green", linestyle="--", linewidth=1.5)
-        _ax.set_title(f"{_label}: spectral centroid = {_c:.2f} Hz", fontsize=10, color=_color, fontweight="bold")
+        _ax.set_title(
+            f"{_label}: spectral centroid = {_c:.2f} Hz",
+            fontsize=10,
+            color=_color,
+            fontweight="bold",
+        )
         _ax.set_ylabel("Power spectral\ndensity")
         _ax.grid(True, alpha=0.4)
     _axes[-1].set_xlim(0, max(20, _cmax + 5))
     _axes[-1].set_xlabel("Frequency (Hz)")
     _fig.tight_layout()
-    _rows.append(("Spectral centroid", _to_img(_fig), "The balance point of the area under the spectrum (green line): low for slow movements, high for fast or vibrating ones."))
+    _rows.append(
+        (
+            "Spectral centroid",
+            _to_img(_fig),
+            "The balance point of the area under the spectrum (green line): low for slow movements, high for fast or vibrating ones.",
+        )
+    )
 
     # Spectral entropy: compare the most rhythmic and the most noisy activity
     def _entropy(label):
@@ -623,19 +724,45 @@ def _(
     # frequency) next to a flat spectrum, which is the maximum entropy case (entropy = 1).
     _fig, _axes = plt.subplots(2, 1, figsize=(4.8, 4.2), sharex=True, sharey=True)
     _cases = [
-        (_by_entropy[0], "tab:blue", "LOW entropy: power concentrated\nin a few frequencies (clear rhythm)"),
-        (_by_entropy[-1], "tab:orange", "HIGH entropy: power spread over\nmany frequencies (noise-like)"),
+        (
+            _by_entropy[0],
+            "tab:blue",
+            "LOW entropy: power concentrated\nin a few frequencies (clear rhythm)",
+        ),
+        (
+            _by_entropy[-1],
+            "tab:orange",
+            "HIGH entropy: power spread over\nmany frequencies (noise-like)",
+        ),
     ]
     for _ax, (_label, _color, _text) in zip(_axes, _cases):
         _f, _Pn, _H = _entropy(_label)
         _top3 = np.sort(_Pn)[::-1][:3].sum()
         _ax.bar(_f, _Pn, width=(_f[1] - _f[0]) * 0.9, color=_color, alpha=0.85)
-        _ax.axhline(1 / len(_f), color="black", linestyle="--", linewidth=1, label="flat spectrum (entropy = 1)")
-        _ax.set_title(f"{_label}: entropy = {_H:.2f}", fontsize=10, color=_color, fontweight="bold")
+        _ax.axhline(
+            1 / len(_f),
+            color="black",
+            linestyle="--",
+            linewidth=1,
+            label="flat spectrum (entropy = 1)",
+        )
+        _ax.set_title(
+            f"{_label}: entropy = {_H:.2f}",
+            fontsize=10,
+            color=_color,
+            fontweight="bold",
+        )
         _ax.text(
-            0.98, 0.92, f"{_text}\ntop 3 frequencies = {100 * _top3:.0f}% of the power",
-            transform=_ax.transAxes, ha="right", va="top", fontsize=7.5,
-            bbox=dict(boxstyle="round", facecolor="white", alpha=0.85, edgecolor=_color),
+            0.98,
+            0.92,
+            f"{_text}\ntop 3 frequencies = {100 * _top3:.0f}% of the power",
+            transform=_ax.transAxes,
+            ha="right",
+            va="top",
+            fontsize=7.5,
+            bbox=dict(
+                boxstyle="round", facecolor="white", alpha=0.85, edgecolor=_color
+            ),
         )
         _ax.set_ylabel("Share of\nthe power")
         _ax.grid(True, alpha=0.4)
@@ -643,10 +770,17 @@ def _(
     _axes[-1].set_xlim(0, 20)
     _axes[-1].set_xlabel("Frequency (Hz)")
     _fig.tight_layout()
-    _rows.append(("Spectral entropy", _to_img(_fig), "Low when the power is concentrated in a few peaks, high when it is spread like noise."))
+    _rows.append(
+        (
+            "Spectral entropy",
+            _to_img(_fig),
+            "Low when the power is concentrated in a few peaks, high when it is spread like noise.",
+        )
+    )
 
     # Band powers: same y-axis in both panels so the amounts can be compared directly
     for _lo, _hi in [(0.5, 3.0), (3.0, 8.0), (8.0, 15.0)]:
+
         def _band_mask(f, lo=_lo, hi=_hi):
             return (f >= lo) & ((f < hi) if hi < 15 else (f <= hi))
 
@@ -655,28 +789,44 @@ def _(
 
         # Log scale: the two activities can differ by several orders of magnitude
         _pair = _psd_extremes(_band_power)
-        _floor = min(_window_psd(_l)[1][_window_psd(_l)[0] <= 20].min() for _l in _pair) / 2
-        _top = max(_window_psd(_l)[1][_window_psd(_l)[0] <= 20].max() for _l in _pair) * 2
+        _floor = (
+            min(_window_psd(_l)[1][_window_psd(_l)[0] <= 20].min() for _l in _pair) / 2
+        )
+        _top = (
+            max(_window_psd(_l)[1][_window_psd(_l)[0] <= 20].max() for _l in _pair) * 2
+        )
         _fig, _axes = _two_panels(sharey=True)
         for _ax, _label, _color in zip(_axes, _pair, _pair_colors):
             _f, _P = _window_psd(_label)
             _ax.plot(_f, _P, color=_color, linewidth=1.5)
-            _ax.fill_between(_f, _floor, _P, where=_band_mask(_f), color=_color, alpha=0.45, interpolate=True)
+            _ax.fill_between(
+                _f,
+                _floor,
+                _P,
+                where=_band_mask(_f),
+                color=_color,
+                alpha=0.45,
+                interpolate=True,
+            )
             _ax.set_yscale("log")
             _ax.set_ylim(_floor, _top)
             _ax.axvspan(_lo, _hi, color="grey", alpha=0.12)
             _ax.set_title(f"{_label}", fontsize=10, color=_color, fontweight="bold")
-            _value_box(_ax, f"power {_lo:g}-{_hi:g} Hz = {_band_power(_f, _P):.3g}", _color)
+            _value_box(
+                _ax, f"power {_lo:g}-{_hi:g} Hz = {_band_power(_f, _P):.3g}", _color
+            )
             _ax.set_ylabel("Power spectral\ndensity")
             _ax.grid(True, alpha=0.4)
         _axes[-1].set_xlim(0, 20)
         _axes[-1].set_xlabel("Frequency (Hz)")
         _fig.tight_layout()
-        _rows.append((
-            f"Power between {_lo:g} and {_hi:g} Hz",
-            _to_img(_fig),
-            "The shaded area under the spectrum inside the grey band: how much of the movement happens at these frequencies (log scale, each grid line is ×10).",
-        ))
+        _rows.append(
+            (
+                f"Power between {_lo:g} and {_hi:g} Hz",
+                _to_img(_fig),
+                "The shaded area under the spectrum inside the grey band: how much of the movement happens at these frequencies (log scale, each grid line is ×10).",
+            )
+        )
 
     _table = "".join(
         f"<tr><td style='padding:6px 12px'><b>{_name}</b></td>"
@@ -719,8 +869,8 @@ def _(features, np):
         label_dict[_i] = _label
     data_input = np.vstack(data_input)
     data_output = np.hstack(data_output)
-    print('Shape of input data:', data_input.shape)
-    print('Number of classes:', len(label_dict))
+    print("Shape of input data:", data_input.shape)
+    print("Number of classes:", len(label_dict))
     return data_input, data_output, label_dict
 
 
@@ -755,7 +905,9 @@ def _(PCA, StandardScaler, data_input, data_output, label_dict, np, plt):
 
     cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
     n95 = int(np.searchsorted(cumulative_variance, 0.95) + 1)
-    print(f"The first two components keep {100 * cumulative_variance[1]:.1f}% of the variance.")
+    print(
+        f"The first two components keep {100 * cumulative_variance[1]:.1f}% of the variance."
+    )
     print(f"{n95} components are needed to keep 95% of the variance.")
 
     _colors = plt.cm.rainbow(np.linspace(0, 1, len(label_dict)))
@@ -806,15 +958,22 @@ def _(mo):
 def _(TSNE, data_input_norm, data_output, label_dict, np, plt):
     # TODO: try different perplexity value
     perplexity = 10
-    tsne = TSNE(n_components=2, perplexity=perplexity, random_state=0, init='pca')
+    tsne = TSNE(n_components=2, perplexity=perplexity, random_state=0, init="pca")
     results_tsne = tsne.fit_transform(data_input_norm)
     _colors = plt.cm.rainbow(np.linspace(0, 1, len(label_dict)))
     # Plot the embedding with one colour for each activity.
     plt.figure(figsize=(10, 6))
     for _i in range(len(label_dict)):
         _points = results_tsne[data_output == _i, :]
-        plt.scatter(_points[:, 0], _points[:, 1], s=12, alpha=0.7, c=[_colors[_i]], label=label_dict[_i])
-    plt.title(f't-SNE of the window features (perplexity = {perplexity})')
+        plt.scatter(
+            _points[:, 0],
+            _points[:, 1],
+            s=12,
+            alpha=0.7,
+            c=[_colors[_i]],
+            label=label_dict[_i],
+        )
+    plt.title(f"t-SNE of the window features (perplexity = {perplexity})")
     plt.legend()
     plt.grid()
     plt.show()
@@ -850,16 +1009,25 @@ def _(data_input_norm, data_output, label_dict, np, plt):
     try:
         import umap
     except ImportError as exc:
-        raise ImportError('Install umap-learn with %pip install umap-learn, then rerun this cell.') from exc
+        raise ImportError(
+            "Install umap-learn with %pip install umap-learn, then rerun this cell."
+        ) from exc
     reducer = umap.UMAP(n_components=2, n_neighbors=15, min_dist=0.1, random_state=0)
     results_umap = reducer.fit_transform(data_input_norm)
     _colors = plt.cm.rainbow(np.linspace(0, 1, len(label_dict)))
     plt.figure(figsize=(10, 6))
     for _i in range(len(label_dict)):
         _points = results_umap[data_output == _i, :]
-    # Plot the embedding with one colour for each activity.
-        plt.scatter(_points[:, 0], _points[:, 1], s=12, alpha=0.7, c=[_colors[_i]], label=label_dict[_i])
-    plt.title('UMAP of the window features')
+        # Plot the embedding with one colour for each activity.
+        plt.scatter(
+            _points[:, 0],
+            _points[:, 1],
+            s=12,
+            alpha=0.7,
+            c=[_colors[_i]],
+            label=label_dict[_i],
+        )
+    plt.title("UMAP of the window features")
     plt.legend()
     plt.grid()
     plt.show()
@@ -919,7 +1087,9 @@ def _(GroupKFold, data_input, data_output, np, overlap):
 
     _train_idx, _test_idx, _groups = [], [], []
     for _cls in np.unique(data_output):
-        _idx = np.flatnonzero(data_output == _cls)  # windows are stored in temporal order
+        _idx = np.flatnonzero(
+            data_output == _cls
+        )  # windows are stored in temporal order
         _n_test = max(1, int(round(test_fraction * len(_idx))))
         _train = _idx[: len(_idx) - _n_test - gap_windows]
         _train_idx.append(_train)
@@ -934,7 +1104,9 @@ def _(GroupKFold, data_input, data_output, np, overlap):
     cv_groups = np.concatenate(_groups)
     cv = GroupKFold(n_splits=n_folds)
 
-    print(f"Train: {X_train.shape[0]} windows | Test: {X_test.shape[0]} windows | gap: {gap_windows} window(s) per class")
+    print(
+        f"Train: {X_train.shape[0]} windows | Test: {X_test.shape[0]} windows | gap: {gap_windows} window(s) per class"
+    )
     return X_test, X_train, cv, cv_groups, y_test, y_train
 
 
@@ -974,8 +1146,15 @@ def _(
         # slightly along x and give it its own colour, marker and line style so all stay visible.
         n_lines = len(lines)
         width = min(0.3, 0.06 * (n_lines - 1)) if n_lines > 1 else 0.0
-        offsets = [(j / (n_lines - 1) - 0.5) * width if n_lines > 1 else 0.0 for j in range(n_lines)]
-        colors = plt.cm.tab10(range(n_lines)) if n_lines <= 10 else plt.cm.viridis(np.linspace(0, 1, n_lines))
+        offsets = [
+            (j / (n_lines - 1) - 0.5) * width if n_lines > 1 else 0.0
+            for j in range(n_lines)
+        ]
+        colors = (
+            plt.cm.tab10(range(n_lines))
+            if n_lines <= 10
+            else plt.cm.viridis(np.linspace(0, 1, n_lines))
+        )
         markers = ["o", "s", "^", "D", "v", "P", "X", "<", ">", "h"]
         linestyles = ["-", "--", "-.", ":"]
 
@@ -987,18 +1166,31 @@ def _(
             xs = np.array([x_pos[res["params"][i][x_param]] for i in idx]) + offsets[j]
             label = ", ".join(f"{_short(k)}={v}" for k, v in zip(others, combo)) or name
             ax.errorbar(
-                xs, res["mean_test_score"][idx], yerr=res["std_test_score"][idx],
-                color=colors[j], marker=markers[j % len(markers)],
-                linestyle=linestyles[j % len(linestyles)], linewidth=1.8, markersize=6,
-                capsize=3, elinewidth=1, label=label,
+                xs,
+                res["mean_test_score"][idx],
+                yerr=res["std_test_score"][idx],
+                color=colors[j],
+                marker=markers[j % len(markers)],
+                linestyle=linestyles[j % len(linestyles)],
+                linewidth=1.8,
+                markersize=6,
+                capsize=3,
+                elinewidth=1,
+                label=label,
             )
             if best in idx:
                 best_xy = (xs[idx.index(best)], res["mean_test_score"][best])
 
         ax.plot(
-            *best_xy, marker="*", markersize=20, color="red", markeredgecolor="black",
-            linestyle="none", zorder=5,
-            label="best: " + ", ".join(f"{_short(k)}={v}" for k, v in search.best_params_.items()),
+            *best_xy,
+            marker="*",
+            markersize=20,
+            color="red",
+            markeredgecolor="black",
+            linestyle="none",
+            zorder=5,
+            label="best: "
+            + ", ".join(f"{_short(k)}={v}" for k, v in search.best_params_.items()),
         )
         ax.set_xticks(range(len(x_values)))
         ax.set_xticklabels([str(v) for v in x_values])
@@ -1017,7 +1209,9 @@ def _(
 
         Also plots the CV accuracy vs `x_param` (default: the first hyper-parameter of the grid).
         """
-        search = GridSearchCV(estimator, param_grid, cv=cv, scoring="accuracy", n_jobs=-1)
+        search = GridSearchCV(
+            estimator, param_grid, cv=cv, scoring="accuracy", n_jobs=-1
+        )
         search.fit(X_train, y_train, groups=cv_groups)
         y_pred = search.predict(X_test)
         cv_std = search.cv_results_["std_test_score"][search.best_index_]
@@ -1056,7 +1250,9 @@ def _(KNeighborsClassifier, StandardScaler, make_pipeline, tune_and_evaluate):
     )
     print(f"Best K: {knn_result['best_params']['kneighborsclassifier__n_neighbors']}")
     print(f"CV accuracy: {knn_result['cv_accuracy']:.3f} ± {knn_result['cv_std']:.3f}")
-    print(f"Test accuracy: {knn_result['test_accuracy']:.3f} | macro F1: {knn_result['test_macro_f1']:.3f}")
+    print(
+        f"Test accuracy: {knn_result['test_accuracy']:.3f} | macro F1: {knn_result['test_macro_f1']:.3f}"
+    )
     return (knn_result,)
 
 
@@ -1100,7 +1296,9 @@ def _(RandomForestClassifier, tune_and_evaluate):
     )
     print(f"Best parameters: {rf_result['best_params']}")
     print(f"CV accuracy: {rf_result['cv_accuracy']:.3f} ± {rf_result['cv_std']:.3f}")
-    print(f"Test accuracy: {rf_result['test_accuracy']:.3f} | macro F1: {rf_result['test_macro_f1']:.3f}")
+    print(
+        f"Test accuracy: {rf_result['test_accuracy']:.3f} | macro F1: {rf_result['test_macro_f1']:.3f}"
+    )
     return (rf_result,)
 
 
@@ -1108,9 +1306,12 @@ def _(RandomForestClassifier, tune_and_evaluate):
 def _(feature_names, np, plt, recordings, rf_result):
     # Replace the generic "chN" suffix with the actual channel name
     _channels = [c.split(" (")[0] for c in next(iter(recordings.values())).columns]
-    _pretty_names = np.array([
-        n.rsplit("_ch", 1)[0] + " | " + _channels[int(n.rsplit("_ch", 1)[1])] for n in feature_names
-    ])
+    _pretty_names = np.array(
+        [
+            n.rsplit("_ch", 1)[0] + " | " + _channels[int(n.rsplit("_ch", 1)[1])]
+            for n in feature_names
+        ]
+    )
 
     rf_importances = rf_result["search"].best_estimator_.feature_importances_
     _top = np.argsort(rf_importances)[::-1][:20]
@@ -1154,7 +1355,13 @@ def _(MLPClassifier, StandardScaler, make_pipeline, tune_and_evaluate):
         "ANN (MLP)",
         make_pipeline(StandardScaler(), MLPClassifier(random_state=0)),
         {
-            "mlpclassifier__hidden_layer_sizes": [(16,), (32,), (64,), (32, 16), (64, 32)],
+            "mlpclassifier__hidden_layer_sizes": [
+                (16,),
+                (32,),
+                (64,),
+                (32, 16),
+                (64, 32),
+            ],
             "mlpclassifier__alpha": [1e-4, 1e-2, 1e-1],
             "mlpclassifier__max_iter": [500, 2000],
         },
@@ -1162,7 +1369,9 @@ def _(MLPClassifier, StandardScaler, make_pipeline, tune_and_evaluate):
     )
     print(f"Best parameters: {ann_result['best_params']}")
     print(f"CV accuracy: {ann_result['cv_accuracy']:.3f} ± {ann_result['cv_std']:.3f}")
-    print(f"Test accuracy: {ann_result['test_accuracy']:.3f} | macro F1: {ann_result['test_macro_f1']:.3f}")
+    print(
+        f"Test accuracy: {ann_result['test_accuracy']:.3f} | macro F1: {ann_result['test_macro_f1']:.3f}"
+    )
     return (ann_result,)
 
 
@@ -1228,10 +1437,20 @@ def _(
     _class_names = [label_dict[i] for i in sorted(label_dict)]
     _cm = confusion_matrix(y_test, best_result["y_pred"], labels=sorted(label_dict))
     _fig, _ax = plt.subplots(figsize=(8, 7))
-    ConfusionMatrixDisplay(_cm, display_labels=_class_names).plot(ax=_ax, xticks_rotation=45, colorbar=False)
+    ConfusionMatrixDisplay(_cm, display_labels=_class_names).plot(
+        ax=_ax, xticks_rotation=45, colorbar=False
+    )
     _ax.set_title(f"Confusion matrix on the test set — {best_result['model']}")
     plt.tight_layout()
-    print(classification_report(y_test, best_result["y_pred"], labels=sorted(label_dict), target_names=_class_names, zero_division=0))
+    print(
+        classification_report(
+            y_test,
+            best_result["y_pred"],
+            labels=sorted(label_dict),
+            target_names=_class_names,
+            zero_division=0,
+        )
+    )
     _fig
     return
 
