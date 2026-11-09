@@ -57,11 +57,33 @@ def _():
     import numpy as np
     import pandas as pd
     from matplotlib import pyplot as plt
+    from sklearn.model_selection import ParameterGrid
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.svm import SVC
+    from sklearn.metrics import (
+        accuracy_score,
+        f1_score,
+        roc_auc_score,
+        recall_score,
+        ConfusionMatrixDisplay,
+    )
 
     # '%matplotlib inline' command supported automatically in marimo
 
     RANDOM_STATE = 0
-    return RANDOM_STATE, np, pd
+    return (
+        ConfusionMatrixDisplay,
+        LogisticRegression,
+        ParameterGrid,
+        RANDOM_STATE,
+        accuracy_score,
+        f1_score,
+        np,
+        pd,
+        plt,
+        recall_score,
+        roc_auc_score,
+    )
 
 
 @app.cell(hide_code=True)
@@ -74,7 +96,7 @@ def _(mo):
 
 @app.cell
 def _(pd):
-    df = pd.read_csv("stress_detection_dataset.csv")
+    df = pd.read_csv("./data/part-2/stress_detection_dataset.csv")
     print(df.shape)
     df.head()
     return (df,)
@@ -83,8 +105,18 @@ def _(pd):
 @app.cell
 def _(df):
     # Columns that describe the window or the target: they are NOT features.
-    meta_cols = ["subject", "window_id", "window_start", "window_end", "window_duration_sec", "condition", "label"]
+    meta_cols = [
+        "subject",
+        "window_id",
+        "window_start",
+        "window_end",
+        "window_duration_sec",
+        "condition",
+        "label",
+    ]
     feature_cols = [c for c in df.columns if c not in meta_cols]
+
+    feature_cols
     return (feature_cols,)
 
 
@@ -103,6 +135,8 @@ def _(df):
     # Binary dataset used in sections 1 to 5.
     # Keep the Fun condition aside until section 6.
     df_bin = df[df["condition"].isin(["Base", "TSST"])].reset_index(drop=True)
+
+    df_bin
     return (df_bin,)
 
 
@@ -117,8 +151,55 @@ def _(mo):
 
 
 @app.cell
-def _():
-    # TODO: show class distribution (overall and per subject) and missing values (per feature, and per subject if relevant)
+def _(df_bin, feature_cols, mo, pd):
+    class_overall = df_bin["condition"].value_counts().to_frame("n_windows")
+    class_overall["pct"] = (
+        100 * class_overall["n_windows"] / len(df_bin)
+    ).round(1)
+
+    class_per_subject = pd.crosstab(df_bin["subject"], df_bin["condition"])
+    class_per_subject["TSST_pct"] = (
+        100 * class_per_subject["TSST"] / class_per_subject.sum(axis=1)
+    ).round(1)
+
+    na_per_feature = df_bin[feature_cols].isna().sum()
+    na_per_feature = (
+        na_per_feature[na_per_feature > 0]
+        .sort_values(ascending=False)
+        .to_frame("n_missing")
+    )
+    na_per_feature["pct"] = (
+        100 * na_per_feature["n_missing"] / len(df_bin)
+    ).round(1)
+
+    _na_rows = df_bin[feature_cols].isna().any(axis=1)
+    na_per_subject = (
+        _na_rows.groupby(df_bin["subject"])
+        .sum()
+        .to_frame("n_windows_with_NaN")
+    )
+    na_per_subject["pct"] = (
+        100
+        * na_per_subject["n_windows_with_NaN"]
+        / df_bin.groupby("subject").size()
+    ).round(1)
+
+    mo.vstack(
+        [
+            mo.md("**Overall class distribution** (`pct` = % of all windows)"),
+            class_overall,
+            mo.md(
+                "**Per subject** (`TSST_pct` = % of the subject's windows that are TSST)"
+            ),
+            class_per_subject,
+            mo.md("**Missing values per feature** (`pct` = % of all windows)"),
+            na_per_feature,
+            mo.md(
+                "**Windows with ≥ 1 missing value, per subject** (`pct` = % of the subject's windows)"
+            ),
+            na_per_subject,
+        ]
+    )
     return
 
 
@@ -130,6 +211,10 @@ def _(mo):
     - What do these observations imply for the preprocessing (section 2)?
 
     **Your answer:**
+
+    - No, the Base and TSST are not balanced, there is 63.5% of Base vs 36.5% of TSST. This is the same for all the subjects, with the TSST percentage fluacting between 35% and 40%. The metric choice should take this into account, with either selecting the F1-score or the weighted-F1-score.
+    - There are a total of 7 features that each have 28 missing values. Those are all concentrated within the S8 subject and derived from a respiratory sensor. They could be explained by a missing respiratory sensore during a 28 window session.
+    - Those observation imply that we should probably balance the data within the sets (or chose an appropriate loss function) and remove those S8 subject 28 windows
     """)
     return
 
@@ -146,8 +231,83 @@ def _(mo):
 
 @app.cell
 def _():
-    # TODO: compare distributions for at least one feature per modality.
-    return
+    import math
+
+    return (math,)
+
+
+@app.cell
+def _(math, plt):
+    def plot_base_vs_tsst(
+        data,
+        features,
+        title="",
+        color="tab:blue",
+        conds=("Base", "TSST"),
+        ncols=None,
+    ):
+
+        n = len(features)
+        ncols = ncols or math.ceil(math.sqrt(n))
+        nrows = math.ceil(n / ncols)
+        fig, axes = plt.subplots(
+            nrows, ncols, figsize=(2.6 * ncols, 2.8 * nrows), squeeze=False
+        )
+        axes = axes.ravel()
+        for ax, f in zip(axes, features):
+            values = [
+                data.loc[data["condition"] == c, f].dropna() for c in conds
+            ]
+            bp = ax.boxplot(
+                values,
+                tick_labels=list(conds),
+                showfliers=False,
+                patch_artist=True,
+            )
+            for box in bp["boxes"]:
+                box.set_facecolor(color)
+                box.set_alpha(0.4)
+            ax.set_title(f, fontsize=9)
+        for ax in axes[n:]:  # hide unused cells
+            ax.set_visible(False)
+        fig.suptitle(title)
+        fig.tight_layout()
+        return fig
+
+    return (plot_base_vs_tsst,)
+
+
+@app.function
+def modality_of(feature):
+    if feature.startswith(("ECG", "HRV")):
+        return "ECG"
+    if feature.startswith(("EDA", "SCL", "SCR")):
+        return "EDA"
+    return "RSP"
+
+
+@app.cell
+def _(df_bin, feature_cols, mo, plot_base_vs_tsst):
+    features_by_modality = {
+        _mod: [f for f in feature_cols if modality_of(f) == _mod]
+        for _mod in ["ECG", "EDA", "RSP"]
+    }
+    modality_colors = {"ECG": "tab:red", "EDA": "tab:blue", "RSP": "tab:green"}
+
+    {_mod: len(_fs) for _mod, _fs in features_by_modality.items()}
+
+    mo.vstack(
+        [
+            plot_base_vs_tsst(
+                df_bin,
+                _feats,
+                title=f"{_mod} – Base vs TSST",
+                color=modality_colors[_mod],
+            )
+            for _mod, _feats in features_by_modality.items()
+        ]
+    )
+    return (modality_colors,)
 
 
 @app.cell(hide_code=True)
@@ -166,6 +326,49 @@ def _():
     return
 
 
+@app.cell
+def _(df_bin, feature_cols, modality_colors, plt):
+    corr = df_bin[feature_cols].corr(method="pearson")
+
+    _fig, _ax = plt.subplots(figsize=(11, 9))
+    _im = _ax.imshow(corr, cmap="RdBu_r", vmin=-1, vmax=1)
+    _ax.set_xticks(
+        range(len(feature_cols)), feature_cols, rotation=90, fontsize=7
+    )
+    _ax.set_yticks(range(len(feature_cols)), feature_cols, fontsize=7)
+
+    # Colour the tick labels by modality and draw lines between modality blocks
+    for _lbl in _ax.get_xticklabels() + _ax.get_yticklabels():
+        _lbl.set_color(modality_colors[modality_of(_lbl.get_text())])
+    _mods = [modality_of(f) for f in feature_cols]
+    for _i in range(1, len(_mods)):
+        if _mods[_i] != _mods[_i - 1]:
+            _ax.axhline(_i - 0.5, c="black", lw=1)
+            _ax.axvline(_i - 0.5, c="black", lw=1)
+
+    _fig.colorbar(_im, ax=_ax, shrink=0.8, label="Pearson ρ")
+    _ax.set_title("Correlation between features (Base + TSST windows)")
+    _fig.tight_layout()
+    _fig
+    return (corr,)
+
+
+@app.cell
+def _(corr, np):
+    _upper = corr.where(np.triu(np.ones(corr.shape, dtype=bool), k=1))
+    high_corr_pairs = (
+        _upper.stack()
+        .rename("pearson_r")
+        .rename_axis(["feature_1", "feature_2"])
+        .reset_index()
+        .loc[lambda d: d["pearson_r"].abs() > 0.8]
+        .sort_values("pearson_r", key=abs, ascending=False)
+        .round(2)
+        .reset_index(drop=True)
+    )
+    return (high_corr_pairs,)
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -173,6 +376,12 @@ def _(mo):
 
     **Your answer:**
     """)
+    return
+
+
+@app.cell
+def _(high_corr_pairs):
+    high_corr_pairs
     return
 
 
@@ -184,6 +393,12 @@ def _(mo):
     Which features do you expect to be the most discriminative between baseline and stress, and why ?
 
     **Your hypothesis:**
+
+    We think that the 2 most important features will be:
+        - ECG_Rate_Mean
+        - SCR_Count
+
+    Both of these features show a very significant difference between the Base and TSST data, as well as not being highly correlated to a lot of other features
     """)
     return
 
@@ -211,7 +426,9 @@ def _(df_bin, feature_cols):
     X_raw = df_bin[feature_cols]
     mean_by_subject = X_raw.groupby(df_bin["subject"]).transform("mean")
     std_by_subject = X_raw.groupby(df_bin["subject"]).transform("std")
-    X_z = ((X_raw - mean_by_subject) / std_by_subject).mask(std_by_subject == 0, 0.0)  # constant feature -> 0
+    X_z = ((X_raw - mean_by_subject) / std_by_subject).mask(
+        std_by_subject == 0, 0.0
+    )  # constant feature -> 0
 
     # Missing values: drop the windows with at least one missing feature.
     keep = X_z.notna().all(axis=1)
@@ -219,7 +436,7 @@ def _(df_bin, feature_cols):
     # X, y and subjects are aligned row by row.
     # `subjects` tells the validation scheme (section 3.1) which subject each window belongs to.
     X = X_z[keep].reset_index(drop=True)
-    y = df_bin.loc[keep, "label"].reset_index(drop=True)   # Base = 0, TSST = 1
+    y = df_bin.loc[keep, "label"].reset_index(drop=True)  # Base = 0, TSST = 1
     subjects = df_bin.loc[keep, "subject"].reset_index(drop=True)
 
     print(f"X: {X.shape} | subjects: {subjects.nunique()}")
@@ -237,6 +454,16 @@ def _(mo):
     - Class imbalance: why use `class_weight` and balanced accuracy rather than only accuracy?
 
     **Your answers:**
+    -
+       - Pros: Z-normalizations puts all the features on the same scale and smooth-out outliers
+       - Cons: New data also has to be Z-normalized (meaning a new subject needs to be Z-normalized with all the already acquired data, it makes adding data 1 by 1 a bit troublesome)
+
+    -
+      - Pros: We keep our data clean and don't make the model bias towards the missing values (their replacement)
+      - Cons: We remove some of the other feature values, we need to have enough data
+      - Alternatives: Put the mean / median of the values of the subject (or of the subjects if we don't have any) where the features aren't missing when it's missing
+
+    - This takes into account the fact that the original data is unbalanced, meaning it will handle the model bias toward the most-dominant class (Base)
     """)
     return
 
@@ -269,7 +496,9 @@ def _(X, subjects, y):
     # `subjects` (defined in section 2) tells the splitter which subject each row belongs to.
     # It must stay aligned with X and y.
     loso = LeaveOneGroupOut()
-    splits = list(loso.split(X, y, groups=subjects))  # list of (train_idx, val_idx) positions
+    splits = list(
+        loso.split(X, y, groups=subjects)
+    )  # list of (train_idx, val_idx) positions
     return (splits,)
 
 
@@ -279,6 +508,8 @@ def _(mo):
     Explain what leave-one-subject-out is and what are its advantages.
 
     **Your answer:**
+
+    By leaving an entire subject and not just some part of each subject, we get a nice way to do cross validation, and also remove the possiblity of our model over-fitting on the subject data it's given
     """)
     return
 
@@ -299,7 +530,6 @@ def _(RANDOM_STATE, X, np, pd, splits, subjects, y):
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.metrics import balanced_accuracy_score
 
-
     def loso_predict(model, X, y, splits):
         """Fit a fresh copy of `model` on each training set of `splits` and predict the held-out subject.
 
@@ -313,25 +543,39 @@ def _(RANDOM_STATE, X, np, pd, splits, subjects, y):
             y_pred[val_idx] = fitted.predict(X.iloc[val_idx])
             if hasattr(fitted, "predict_proba"):
                 y_prob[val_idx] = fitted.predict_proba(X.iloc[val_idx])[:, 1]
-        return pd.DataFrame({"y_true": y.to_numpy(), "y_pred": y_pred, "y_prob": y_prob,
-                             "subject": subjects.to_numpy()}, index=X.index)
-
+        return pd.DataFrame(
+            {
+                "y_true": y.to_numpy(),
+                "y_pred": y_pred,
+                "y_prob": y_prob,
+                "subject": subjects.to_numpy(),
+            },
+            index=X.index,
+        )
 
     # Random forest provided as a starting point.
     rf = RandomForestClassifier(
-        n_estimators=1,          # number of trees
-        max_depth=1,            # fully grown trees
-        min_samples_leaf=1000,        # minimum number of windows in a leaf
-        class_weight="balanced",   # compensates for the Base / TSST imbalance
+        n_estimators=1,  # number of trees
+        max_depth=1,  # fully grown trees
+        min_samples_leaf=1000,  # minimum number of windows in a leaf
+        class_weight="balanced",  # compensates for the Base / TSST imbalance
         random_state=RANDOM_STATE,
         n_jobs=-1,
     )
 
-    results = {}   # model name -> out-of-fold predictions
+    results = {}  # model name -> out-of-fold predictions
     results["Random forest (default)"] = loso_predict(rf, X, y, splits)
     res = results["Random forest (default)"]
-    print(f"Random forest (default) - LOSO balanced accuracy: {balanced_accuracy_score(res.y_true, res.y_pred):.3f}")
-    return
+    print(
+        f"Random forest (default) - LOSO balanced accuracy: {balanced_accuracy_score(res.y_true, res.y_pred):.3f}"
+    )
+    return (
+        RandomForestClassifier,
+        balanced_accuracy_score,
+        clone,
+        loso_predict,
+        results,
+    )
 
 
 @app.cell(hide_code=True)
@@ -343,10 +587,98 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(
+    ParameterGrid,
+    X,
+    balanced_accuracy_score,
+    clone,
+    loso_predict,
+    pd,
+    splits,
+    y,
+):
+    def grid_search_loso(base_model, param_grid):
+
+        rows, best = [], (-1.0, None, None)
+        for params in ParameterGrid(param_grid):
+            model = clone(base_model).set_params(**params)
+            preds = loso_predict(model, X, y, splits)
+            score = balanced_accuracy_score(preds.y_true, preds.y_pred)
+            rows.append({**params, "balanced_accuracy": round(score, 3)})
+            if score > best[0]:
+                best = (score, model, preds)
+        return pd.DataFrame(rows), best[1], best[2]
+
+    return (grid_search_loso,)
+
+
+@app.cell
+def _(plt):
+    def plot_grid_search(table, x, hue=None, title=""):
+        fig, ax = plt.subplots(figsize=(6, 3.5))
+        x_labels = list(
+            dict.fromkeys(table[x].astype(str))
+        )  # keep the grid order, None -> "None"
+        groups = (
+            table.groupby(hue, dropna=False, sort=False)
+            if hue
+            else [(None, table)]
+        )
+        for key, g in groups:
+            ax.plot(
+                g[x].astype(str).map(x_labels.index),
+                g["balanced_accuracy"],
+                marker="o",
+                label=f"{hue} = {key}" if hue else None,
+            )
+        ax.axhline(0.5, ls="--", c="grey", lw=0.8, label="chance")
+        ax.set_xticks(range(len(x_labels)), x_labels)
+        ax.set_xlabel(x)
+        ax.set_ylabel("LOSO balanced accuracy")
+        ax.set_title(title)
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    return (plot_grid_search,)
+
+
+@app.cell
+def _(
+    RANDOM_STATE,
+    RandomForestClassifier,
+    grid_search_loso,
+    mo,
+    plot_grid_search,
+):
     # TODO: tune the random forest (one or two hyperparameters, small search).
     # Store the predictions of your best random forest in `results`, e.g. results["Random forest (tuned)"] = ...
-    return
+    rf_grid, rf_tuned, res_rf_tuned = grid_search_loso(
+        RandomForestClassifier(
+            n_estimators=200,
+            class_weight="balanced",
+            random_state=RANDOM_STATE,
+            n_jobs=-1,
+        ),
+        {"max_depth": [3, 5, 10, None], "min_samples_leaf": [1, 5, 20]},
+    )
+
+    mo.vstack(
+        [
+            mo.md(
+                f"**Best random forest:** `max_depth={rf_tuned.max_depth}`, "
+                f"`min_samples_leaf={rf_tuned.min_samples_leaf}`"
+            ),
+            plot_grid_search(
+                rf_grid,
+                x="max_depth",
+                hue="min_samples_leaf",
+                title="Random forest – LOSO tuning",
+            ),
+            rf_grid.sort_values("balanced_accuracy", ascending=False),
+        ]
+    )
+    return res_rf_tuned, rf_tuned
 
 
 @app.cell(hide_code=True)
@@ -358,10 +690,24 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(LogisticRegression, grid_search_loso, mo, plot_grid_search):
     # TODO: implement at least one other classifier, tune one or two hyperparameters,
     # and store its predictions in `results`.
-    return
+    lr_grid, lr_tuned, res_lr = grid_search_loso(
+        LogisticRegression(class_weight="balanced", max_iter=5000),
+        {"C": [0.001, 0.01, 0.1, 1, 10]},
+    )
+
+    mo.vstack(
+        [
+            mo.md(f"**Best logistic regression:** `C={lr_tuned.C}`"),
+            plot_grid_search(
+                lr_grid, x="C", title="Logistic regression – LOSO tuning"
+            ),
+            lr_grid.sort_values("balanced_accuracy", ascending=False),
+        ]
+    )
+    return lr_tuned, res_lr
 
 
 @app.cell(hide_code=True)
@@ -373,9 +719,13 @@ def _(mo):
 
 
 @app.cell
-def _():
-    # TODO: add a simple baseline and store its predictions in `results`.
-    return
+def _(X, loso_predict, splits, y):
+    from sklearn.dummy import DummyClassifier
+
+    res_dummy = loso_predict(
+        DummyClassifier(strategy="most_frequent"), X, y, splits
+    )
+    return (res_dummy,)
 
 
 @app.cell(hide_code=True)
@@ -384,6 +734,8 @@ def _(mo):
     **Question:** if you select the hyperparameters with the same LOSO scores that you report, why is the reported performance slightly optimistic? What could you do to prevent it?
 
     **Your answer:**
+
+    Because we fine tune the model based on the performance of the "test set", meaning that our model will probably have better results that a truely unseen subject
     """)
     return
 
@@ -402,20 +754,158 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(mo):
+    mo.md(r"""
+    **Which metric matters most?**
+
+    - **Accuracy** is misleading here: about 64 % of the windows are Base, so the baseline that always predicts Base already gets about 0.64 accuracy without detecting any stress.
+    - **Balanced accuracy** (mean of the recall of Base and the recall of TSST) is the **main metric**. It is not affected by the imbalance (chance = 0.5 whatever the class proportions), and it gives the same weight to detecting stress and to recognising rest. It is also the metric used for tuning, so the comparison is consistent.
+    - **F1 (TSST)** focuses on the stress class only: it combines how many stress windows are found (recall) and how many alarms are correct (precision). It is useful if missed stress or false alarms matter more, but it depends on the class proportions.
+    - **ROC-AUC** measures how well the predicted probability ranks TSST windows above Base windows, independently of the 0.5 threshold. It shows whether a better threshold could improve the model.
+    - **Per-subject balanced accuracy (mean ± std)** is what LOSO is designed to measure: performance on a *new* person. The std shows whether the model works equally well for everyone.
+    """)
+    return
+
+
+@app.cell
+def _(
+    accuracy_score,
+    balanced_accuracy_score,
+    f1_score,
+    mo,
+    np,
+    pd,
+    res_dummy,
+    res_lr,
+    res_rf_tuned,
+    results,
+    roc_auc_score,
+):
     # TODO: build a summary table comparing all models in `results` and report several metrics.
-    return
+    all_results = {
+        **results,  # "Random forest (default)"
+        "Random forest (tuned)": res_rf_tuned,
+        "Logistic regression (tuned)": res_lr,
+        "Baseline (most frequent)": res_dummy,
+    }
+
+    _rows = {}
+    for _name, _r in all_results.items():
+        _per_subj = _r.groupby("subject")[["y_true", "y_pred"]].apply(
+            lambda g: balanced_accuracy_score(g.y_true, g.y_pred)
+        )
+        _rows[_name] = {
+            "accuracy": accuracy_score(_r.y_true, _r.y_pred),
+            "balanced_accuracy": balanced_accuracy_score(_r.y_true, _r.y_pred),
+            "f1_TSST": f1_score(_r.y_true, _r.y_pred),
+            "roc_auc": roc_auc_score(_r.y_true, _r.y_prob)
+            if _r.y_prob.notna().all()
+            else np.nan,
+            "bal_acc_subject_mean": _per_subj.mean(),
+            "bal_acc_subject_std": _per_subj.std(),
+        }
+
+    summary = (
+        pd.DataFrame(_rows)
+        .T.rename_axis("model")
+        .sort_values("balanced_accuracy", ascending=False)
+        .round(3)
+    )
+    best_model_name = summary.drop(
+        index=["Random forest (default)", "Baseline (most frequent)"]
+    )["balanced_accuracy"].idxmax()
+
+    mo.vstack([mo.md(f"**Best model:** {best_model_name}"), summary])
+    return all_results, best_model_name
 
 
 @app.cell
-def _():
+def _(ConfusionMatrixDisplay, all_results, best_model_name, plt):
     # TODO: show a confusion matrix for your best model (use its predictions in `results`).
+    _r = all_results[best_model_name]
+
+    _fig, _axes = plt.subplots(1, 2, figsize=(9, 4))
+    ConfusionMatrixDisplay.from_predictions(
+        _r.y_true,
+        _r.y_pred,
+        display_labels=["Base", "TSST"],
+        ax=_axes[0],
+        colorbar=False,
+    )
+    ConfusionMatrixDisplay.from_predictions(
+        _r.y_true,
+        _r.y_pred,
+        display_labels=["Base", "TSST"],
+        normalize="true",
+        values_format=".2f",
+        ax=_axes[1],
+        colorbar=False,
+    )
+    _axes[0].set_title("Counts")
+    _axes[1].set_title("Normalised per true class (recall)")
+    _fig.suptitle(best_model_name)
+    _fig.tight_layout()
+    _fig
     return
 
 
 @app.cell
-def _():
+def _(
+    all_results,
+    balanced_accuracy_score,
+    best_model_name,
+    mo,
+    pd,
+    plt,
+    recall_score,
+):
     # TODO: report per-subject performance for your best model (hint: `results[name].groupby("subject")`).
+    per_subject = (
+        all_results[best_model_name]
+        .groupby("subject")[["y_true", "y_pred"]]
+        .apply(
+            lambda g: pd.Series(
+                {
+                    "n_windows": len(g),
+                    "TSST_pct": 100 * g.y_true.mean(),
+                    "balanced_accuracy": balanced_accuracy_score(
+                        g.y_true, g.y_pred
+                    ),
+                    "recall_TSST": recall_score(
+                        g.y_true, g.y_pred, pos_label=1, zero_division=0
+                    ),
+                    "recall_Base": recall_score(
+                        g.y_true, g.y_pred, pos_label=0, zero_division=0
+                    ),
+                }
+            )
+        )
+        .round(3)
+        .sort_values("balanced_accuracy")
+    )
+
+    _fig, _ax = plt.subplots(figsize=(8, 3.5))
+    _ax.bar(
+        per_subject.index.astype(str),
+        per_subject["balanced_accuracy"],
+        color="tab:blue",
+        alpha=0.6,
+    )
+    _ax.axhline(0.5, ls="--", c="grey", lw=0.8, label="chance")
+    _ax.axhline(
+        per_subject["balanced_accuracy"].mean(),
+        c="tab:blue",
+        lw=1,
+        label="mean",
+    )
+    _ax.set_xlabel("held-out subject")
+    _ax.set_ylabel("balanced accuracy")
+    _ax.set_ylim(0, 1.05)
+    _ax.set_title(f"Per-subject performance – {best_model_name}")
+    _ax.legend(fontsize=8)
+    _fig.tight_layout()
+
+    mo.vstack([_fig, per_subject])
     return
 
 
@@ -425,6 +915,10 @@ def _(mo):
     **Your comments:** Which model is the best, and is the difference with the others meaningful? Is the model equally good for all subjects?
 
     **Your answer:**
+
+    For us the best model is the Logistic regression. It has the best weighted accuracy and the lowest bal_acc_subject_std.
+
+    Interestingly, S8 and S2 are the ones with the worst performance (didn't look why yet)
     """)
     return
 
@@ -442,8 +936,115 @@ def _(mo):
 
 
 @app.cell
-def _():
-    # TODO: determine which features matter most for your best model.
+def _(RANDOM_STATE, clone, modality_colors, pd, plt):
+    from sklearn.inspection import permutation_importance
+
+    def loso_permutation_importance(model, X, y, splits, n_repeats=5):
+        """Permutation importance (drop in balanced accuracy) measured on each held-out subject,
+        then averaged over the LOSO folds. Returns a DataFrame: mean, std, modality per feature."""
+        imps = []
+        for tr, va in splits:
+            fitted = clone(model).fit(X.iloc[tr], y.iloc[tr])
+            pi = permutation_importance(
+                fitted,
+                X.iloc[va],
+                y.iloc[va],
+                scoring="balanced_accuracy",
+                n_repeats=n_repeats,
+                random_state=RANDOM_STATE,
+                n_jobs=-1,
+            )
+            imps.append(pi.importances_mean)
+        imp = (
+            pd.DataFrame(imps, columns=X.columns)
+            .agg(["mean", "std"])
+            .T.sort_values("mean", ascending=False)
+            .round(4)
+        )
+        imp["modality"] = imp.index.map(modality_of)
+        return imp
+
+    def plot_importance(imp, title="", top=15):
+        """Horizontal bar plot of the `top` most important features, coloured by modality."""
+        top_imp = imp.head(top)[::-1]
+        fig, ax = plt.subplots(figsize=(7, 5))
+        ax.barh(
+            top_imp.index,
+            top_imp["mean"],
+            xerr=top_imp["std"],
+            color=top_imp["modality"].map(modality_colors),
+            alpha=0.7,
+        )
+        ax.axvline(0, c="grey", lw=0.8)
+        ax.set_xlabel("drop in balanced accuracy when the feature is permuted")
+        ax.set_title(title)
+        ax.legend(
+            handles=[
+                plt.Rectangle((0, 0), 1, 1, color=c, alpha=0.7)
+                for c in modality_colors.values()
+            ],
+            labels=list(modality_colors),
+            fontsize=8,
+            loc="lower right",
+        )
+        fig.tight_layout()
+        return fig
+
+    return loso_permutation_importance, plot_importance
+
+
+@app.cell
+def _(
+    X,
+    best_model_name,
+    loso_permutation_importance,
+    lr_tuned,
+    mo,
+    pd,
+    plot_importance,
+    rf_tuned,
+    splits,
+    y,
+):
+    tuned_models = {
+        "Random forest (tuned)": rf_tuned,
+        "Logistic regression (tuned)": lr_tuned,
+    }
+
+    importances = {
+        _name: loso_permutation_importance(_m, X, y, splits)
+        for _name, _m in tuned_models.items()
+    }
+
+    # Side-by-side comparison tables
+    importance_all = pd.DataFrame(
+        {_name: _imp["mean"] for _name, _imp in importances.items()}
+    ).sort_values(best_model_name, ascending=False)
+    importance_all.insert(0, "modality", importance_all.index.map(modality_of))
+
+    importance_by_modality = pd.DataFrame(
+        {
+            _name: _imp.groupby("modality")["mean"].sum()
+            for _name, _imp in importances.items()
+        }
+    ).round(4)
+
+    mo.vstack(
+        [
+            plot_importance(
+                _imp, title=f"Permutation importance (LOSO) – {_name}"
+            )
+            for _name, _imp in importances.items()
+        ]
+        + [
+            mo.md("**Total importance per modality**"),
+            importance_by_modality,
+            mo.md(
+                f"**Mean importance per feature, all models** (sorted by {best_model_name})"
+            ),
+            importance_all,
+        ]
+    )
     return
 
 
@@ -455,9 +1056,9 @@ def _(mo):
     Answer in your own words, supported by your results:
 
     1. Do the most important features agree with your hypothesis (1.4) ? If not, what are the differences ?
-    2. Which modality seems to be the most informative?
-    3. Which subjects are misclassified, why could that be ?
-    4. What are the limitations of your system? Would you trust it in the real world?
+    3. Which modality seems to be the most informative?
+    4. Which subjects are misclassified, why could that be ?
+    5. What are the limitations of your system? Would you trust it in the real world?
 
     **Your answers:**
     """)
