@@ -203,6 +203,28 @@ def _(df_bin, feature_cols, mo, pd):
     return
 
 
+@app.cell
+def _(df_bin, feature_cols, mo):
+    s8_complete = df_bin[
+        (df_bin["subject"] == "S8") & ~df_bin[feature_cols].isna().any(axis=1)
+    ]
+
+    s8_dist = s8_complete["condition"].value_counts().to_frame("n_windows")
+    s8_dist["pct"] = (100 * s8_dist["n_windows"] / len(s8_complete)).round(1)
+
+    mo.vstack(
+        [
+            mo.md(
+                "**Subject 8 class distribution, complete windows only** "
+                f"({len(s8_complete)} windows without missing features, "
+                f"out of {(df_bin['subject'] == 8).sum()} total)"
+            ),
+            s8_dist,
+        ]
+    )
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -1056,11 +1078,16 @@ def _(mo):
     Answer in your own words, supported by your results:
 
     1. Do the most important features agree with your hypothesis (1.4) ? If not, what are the differences ?
-    3. Which modality seems to be the most informative?
-    4. Which subjects are misclassified, why could that be ?
-    5. What are the limitations of your system? Would you trust it in the real world?
+    2. Which modality seems to be the most informative?
+    3. Which subjects are misclassified, why could that be ?
+    4. What are the limitations of your system? Would you trust it in the real world?
 
     **Your answers:**
+
+    1. Our features both showed in the top 10 of both models (ECG_Rate_Mean 3, RSP_Rate_Mean 10). This shows that doing the EDA can already give a good grasp at which features could work.
+    2. It depends of the model, for the random forest, it seems to be the ECG, where in the logistic regression it's the EDA
+    3. Subject 8 and 2 are the ones with the most misclassification. It would need to be looked further, maybe they have a stress disorder
+    4. The limitations are that we always need the 31 same features, a subject missing one of those wouldn't work with our current model. This model could probably be tested in an exploratory analysis, but not diagnostic wise
     """)
     return
 
