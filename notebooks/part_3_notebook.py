@@ -107,12 +107,15 @@ def _():
     try:
         import einops  # noqa: F401
     except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "einops"])
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "-q", "einops"]
+        )
 
     # On Google Colab: put the unzipped PW_SleepFM folder on your Drive and adapt the path below.
     COLAB_DIR = "/content/drive/MyDrive/PW_SleepFM"
     if "google.colab" in sys.modules:
         from google.colab import drive
+
         drive.mount("/content/drive")
         os.chdir(COLAB_DIR)
 
@@ -121,12 +124,19 @@ def _():
     import numpy as np
     import pandas as pd
     import torch
-    from sklearn.metrics import ConfusionMatrixDisplay, accuracy_score, cohen_kappa_score, f1_score
+    from sklearn.metrics import (
+        ConfusionMatrixDisplay,
+        accuracy_score,
+        cohen_kappa_score,
+        f1_score,
+    )
 
     from sleepfm_models import SetTransformer, SleepEventLSTMClassifier
 
     warnings.filterwarnings("ignore")
-    assert Path("../data/part-3/hdf5").exists(),"Run this notebook from the PW_SleepFM folder (the one containing data/ and checkpoints/)"
+    assert Path("../data/part-3/hdf5").exists(), (
+        "Run this notebook from the PW_SleepFM folder (the one containing data/ and checkpoints/)"
+    )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("device:", device)
 
@@ -169,15 +179,21 @@ def _(mo):
 
 @app.cell
 def _(DATA, NIGHTS, h5py, np, plt):
-    with h5py.File(DATA / 'hdf5' / f'{NIGHTS[0]}.hdf5') as f:
+    with h5py.File(DATA / "hdf5" / f"{NIGHTS[0]}.hdf5") as f:
         channels = sorted(f.keys())
         print({c: f[c].shape for c in channels})
         start = 3 * 3600 * 128  # 3 hours after the start of the recording
-        _fig, _axes = plt.subplots(len(channels), 1, figsize=(12, 9), sharex=True)
+        _fig, _axes = plt.subplots(
+            len(channels), 1, figsize=(12, 9), sharex=True
+        )
         for _ax, c in zip(_axes, channels):
-            _ax.plot(np.arange(30 * 128) / 128, f[c][start:start + 30 * 128].astype(float), lw=0.5)
+            _ax.plot(
+                np.arange(30 * 128) / 128,
+                f[c][start : start + 30 * 128].astype(float),
+                lw=0.5,
+            )
             _ax.set_ylabel(c, rotation=0, labelpad=45, fontsize=8)
-    _axes[-1].set_xlabel('seconds (30 s shown)')
+    _axes[-1].set_xlabel("seconds (30 s shown)")
     plt.show()
     return
 
@@ -186,8 +202,19 @@ def _(DATA, NIGHTS, h5py, np, plt):
 def _(DATA, NIGHTS, pd):
     labels_df = pd.read_csv(DATA / "labels" / f"{NIGHTS[0]}.csv")
     print(labels_df.head(8))
-    dist = pd.DataFrame({n: pd.read_csv(DATA / "labels" / f"{n}.csv")["StageName"].value_counts(normalize=True) for n in NIGHTS})
-    print((dist * 100).round(0).reindex(["Wake", "Stage 1", "Stage 2", "Stage 3", "REM"]))
+    dist = pd.DataFrame(
+        {
+            n: pd.read_csv(DATA / "labels" / f"{n}.csv")[
+                "StageName"
+            ].value_counts(normalize=True)
+            for n in NIGHTS
+        }
+    )
+    print(
+        (dist * 100)
+        .round(0)
+        .reindex(["Wake", "Stage 1", "Stage 2", "Stage 3", "REM"])
+    )
     return
 
 
@@ -203,6 +230,10 @@ def _(mo):
 def _(mo):
     mo.md(r"""
     *Your answer:*
+
+    Because it's not an actual sensor data, it's data that was put here to make it easier to use the fundation model with.
+
+    It means that it's possible to use the model without necessarly having all the input features (hence fundation model)
     """)
     return
 
@@ -220,20 +251,40 @@ def _(mo):
 @app.cell
 def _(SetTransformer, device, json, torch):
     MODALITIES = {
-        "BAS": ["EEG C3-M2", "EEG C4-M1", "EEG F4-M1", "EEG O2-M1", "EOG E1-M2", "EOG E2-M2"],  # brain + eyes
-        "RESP": ["RESP_DUMMY"],                                                                  # breathing (not recorded in HMC)
-        "EKG": ["ECG"],                                                                          # heart
-        "EMG": ["EMG chin"],                                                                     # muscle
+        "BAS": [
+            "EEG C3-M2",
+            "EEG C4-M1",
+            "EEG F4-M1",
+            "EEG O2-M1",
+            "EOG E1-M2",
+            "EOG E2-M2",
+        ],  # brain + eyes
+        "RESP": ["RESP_DUMMY"],  # breathing (not recorded in HMC)
+        "EKG": ["ECG"],  # heart
+        "EMG": ["EMG chin"],  # muscle
     }
     CHUNK = 5 * 60 * 128
 
     cfg = json.load(open("../checkpoints/model_base/config.json"))
-    base_model = SetTransformer(cfg["in_channels"], cfg["patch_size"], cfg["embed_dim"], cfg["num_heads"], cfg["num_layers"],
-                                pooling_head=cfg["pooling_head"], dropout=0.0)
-    state = torch.load("../checkpoints/model_base/best.pt", map_location="cpu")["state_dict"]
-    base_model.load_state_dict({k.removeprefix("module."): v for k, v in state.items()})
+    base_model = SetTransformer(
+        cfg["in_channels"],
+        cfg["patch_size"],
+        cfg["embed_dim"],
+        cfg["num_heads"],
+        cfg["num_layers"],
+        pooling_head=cfg["pooling_head"],
+        dropout=0.0,
+    )
+    state = torch.load(
+        "../checkpoints/model_base/best.pt", map_location="cpu"
+    )["state_dict"]
+    base_model.load_state_dict(
+        {k.removeprefix("module."): v for k, v in state.items()}
+    )
     base_model.to(device).eval()
-    print(f"SleepFM base model: {sum(p.numel() for p in base_model.parameters()) / 1e6:.1f} M parameters")
+    print(
+        f"SleepFM base model: {sum(p.numel() for p in base_model.parameters()) / 1e6:.1f} M parameters"
+    )
     return CHUNK, MODALITIES, base_model
 
 
@@ -254,22 +305,37 @@ def _(CHUNK, DATA, MODALITIES, base_model, device, h5py, np, torch):
     def compute_embeddings(night):
         """Return the SleepFM embeddings of a night, shape (4 modalities, n_5s_windows, 128)."""
         with h5py.File(DATA / "hdf5" / f"{night}.hdf5") as f:
-            signals = {m: np.stack([f[c][:] for c in chans]).astype(np.float32) for m, chans in MODALITIES.items()}
-        n_chunks = signals["BAS"].shape[1] // CHUNK  # the last incomplete chunk is dropped
+            signals = {
+                m: np.stack([f[c][:] for c in chans]).astype(np.float32)
+                for m, chans in MODALITIES.items()
+            }
+        n_chunks = (
+            signals["BAS"].shape[1] // CHUNK
+        )  # the last incomplete chunk is dropped
 
         all_modalities = []
         for m, sig in signals.items():
             n_ch = sig.shape[0]
-            chunks = sig[:, : n_chunks * CHUNK].reshape(n_ch, n_chunks, CHUNK).transpose(1, 0, 2)  # (n_chunks, n_ch, CHUNK)
+            chunks = (
+                sig[:, : n_chunks * CHUNK]
+                .reshape(n_ch, n_chunks, CHUNK)
+                .transpose(1, 0, 2)
+            )  # (n_chunks, n_ch, CHUNK)
             out = []
             for batch in torch.from_numpy(chunks).split(16):
-                mask = torch.zeros(batch.shape[:2], dtype=torch.bool)  # False = real channel (no padding)
+                mask = torch.zeros(
+                    batch.shape[:2], dtype=torch.bool
+                )  # False = real channel (no padding)
                 with torch.no_grad():
-                    pooled_5min, embeddings_5s = base_model(batch.to(device), mask.to(device))
+                    pooled_5min, embeddings_5s = base_model(
+                        batch.to(device), mask.to(device)
+                    )
                     # TODO 1: select the relevant embeddings
                     emb = embeddings_5s
                 out.append(emb.cpu())
-            all_modalities.append(torch.cat(out).reshape(-1, 128))  # (n_chunks * 60, 128)
+            all_modalities.append(
+                torch.cat(out).reshape(-1, 128)
+            )  # (n_chunks * 60, 128)
         return torch.stack(all_modalities)
 
     return (compute_embeddings,)
@@ -296,7 +362,11 @@ def _(DATA, NIGHTS, Path, compute_embeddings, np, os, pd, time, torch):
             EMB[night] = compute_embeddings(night)
             np.save(path, EMB[night].numpy())
         # one label per embedding (labels are truncated to the part of the night that was embedded)
-        LAB[night] = torch.from_numpy(pd.read_csv(DATA / "labels" / f"{night}.csv")["StageNumber"].to_numpy()[: EMB[night].shape[1]])
+        LAB[night] = torch.from_numpy(
+            pd.read_csv(DATA / "labels" / f"{night}.csv")[
+                "StageNumber"
+            ].to_numpy()[: EMB[night].shape[1]]
+        )
         print(night, tuple(EMB[night].shape), f"({time.time() - t0:.0f}s)")
     return EMB, LAB
 
@@ -314,6 +384,12 @@ def _(mo):
 def _(mo):
     mo.md(r"""
     *Your answer:*
+
+    - 4 is the number of modalities (BAS, RESP, EKG, EMG). Each modality gets its own embedding sequence
+    - n is the number of 5-second windows in the night (one embedding per window)
+    - 128 is the dimension of each embedding vector (the base model's embed_dim)
+
+    We use the 5 s embeddings rather than the 5 min ones because sleep stages are scored per 30 s epoch, and a stage can change from one epoch to the next. A 5-minute window covers about 10 epochs, which often span several stages. A single 5-minute vector would blur these transitions, and we couldn't assign it one label. With 5 s embeddings, each vector matches exactly one label, so we keep the time resolution needed to detect short stages and transitions.
     """)
     return
 
@@ -355,17 +431,18 @@ def _(SleepEventLSTMClassifier, device, json, torch):
         mask[:, 1] = 1  # modality index 1 = RESP
         return mask.to(device)
 
-
-    HEAD_PARAMS = json.load(open("checkpoints/model_sleep_staging/config.json"))["model_params"]
-
+    HEAD_PARAMS = json.load(
+        open("../checkpoints/model_sleep_staging/config.json")
+    )["model_params"]
 
     def load_head(path):
         """Build the staging head and load the weights stored in `path`."""
         model = SleepEventLSTMClassifier(**HEAD_PARAMS)
         state = torch.load(path, map_location="cpu")
-        model.load_state_dict({k.removeprefix("module."): v for k, v in state.items()})
+        model.load_state_dict(
+            {k.removeprefix("module."): v for k, v in state.items()}
+        )
         return model.to(device)
-
 
     print(HEAD_PARAMS)
     return load_head, make_mask
@@ -391,7 +468,7 @@ def _(EMB, device, make_mask, torch):
         with torch.no_grad():
             logits, _ = model(x, make_mask(x.shape[2]))
             # TODO 2: predicted stage = index of the highest score, for each 5 s window
-            pred = logits[0].____(-1)
+            pred = logits[0].argmax(-1)
         return pred.cpu().numpy()
 
     return (predict,)
@@ -414,7 +491,6 @@ def _(
     LAB,
     NIGHTS,
     STAGES,
-    ____,
     accuracy_score,
     cohen_kappa_score,
     f1_score,
@@ -427,17 +503,38 @@ def _(
         y = np.concatenate([LAB[n].numpy() for n in nights])
         p = np.concatenate([predict(model, n) for n in nights])
         # TODO 3: choose how the 5 per-stage F1 scores are averaged
-        macro_f1 = f1_score(y, p, average=____)
-        return {"accuracy": accuracy_score(y, p), "macro_F1": macro_f1, "kappa": cohen_kappa_score(y, p)}, y, p
 
+        # macro: every stage counts equally, so rare stages (N1, N3) weigh as much as N2
+        macro_f1 = f1_score(y, p, average="macro")
+        return (
+            {
+                "accuracy": accuracy_score(y, p),
+                "macro_F1": macro_f1,
+                "kappa": cohen_kappa_score(y, p),
+            },
+            y,
+            p,
+        )
 
     def per_night_kappa(model):
-        return pd.Series({n: cohen_kappa_score(LAB[n].numpy(), predict(model, n)) for n in NIGHTS})
-
+        return pd.Series(
+            {
+                n: cohen_kappa_score(LAB[n].numpy(), predict(model, n))
+                for n in NIGHTS
+            }
+        )
 
     def plot_confusion(y, p, title):
-        ConfusionMatrixDisplay.from_predictions(y, p, labels=range(5), display_labels=STAGES, normalize="true",
-                                                values_format=".2f", cmap="Blues", colorbar=False)
+        ConfusionMatrixDisplay.from_predictions(
+            y,
+            p,
+            labels=range(5),
+            display_labels=STAGES,
+            normalize="true",
+            values_format=".2f",
+            cmap="Blues",
+            colorbar=False,
+        )
         plt.title(title)
         plt.show()
 
@@ -446,11 +543,20 @@ def _(
 
 @app.cell
 def _(NIGHTS, evaluate, load_head, np, plot_confusion):
-    zero_shot = load_head("checkpoints/model_sleep_staging/best.pth")
+    zero_shot = load_head("../checkpoints/model_sleep_staging/best.pth")
     scores_zs, y_zs, p_zs = evaluate(zero_shot, NIGHTS)
-    print("Zero-shot on the 5 nights:", {k: round(v, 3) for k, v in scores_zs.items()})
-    print("predicted stages (Wake, N1, N2, N3, REM):", np.bincount(p_zs, minlength=5))
-    print("true stages      (Wake, N1, N2, N3, REM):", np.bincount(y_zs, minlength=5))
+    print(
+        "Zero-shot on the 5 nights:",
+        {k: round(v, 3) for k, v in scores_zs.items()},
+    )
+    print(
+        "predicted stages (Wake, N1, N2, N3, REM):",
+        np.bincount(p_zs, minlength=5),
+    )
+    print(
+        "true stages      (Wake, N1, N2, N3, REM):",
+        np.bincount(y_zs, minlength=5),
+    )
     plot_confusion(y_zs, p_zs, "Zero-shot (rows = true stage)")
     return scores_zs, zero_shot
 
@@ -468,6 +574,12 @@ def _(mo):
 def _(mo):
     mo.md(r"""
     *Your answer:*
+
+    The model seems to have quite poor performances and very often predicts "Wake"
+
+    There can be several explainations:
+    - Maybe the sensor placement between our data and the fundation model differ (refer to the SOPS)
+    - Maybe the respiration (the feature our data miss) is actually crucial at determining the sleep stage
     """)
     return
 
@@ -484,6 +596,8 @@ def _(mo):
 def _(mo):
     mo.md(r"""
     *Your answer:*
+
+    Because we want each sleep stage to mater as much as the other ones, solving our unbalanced issue
     """)
     return
 
@@ -505,9 +619,12 @@ def _(mo):
 
 @app.cell
 def _(NIGHTS, evaluate, load_head, per_night_kappa, plot_confusion):
-    finetuned = load_head("checkpoints/finetuned_head.pt")
+    finetuned = load_head("../checkpoints/finetuned_head.pt")
     scores_ft, y_ft, p_ft = evaluate(finetuned, NIGHTS)
-    print("Fine-tuned on the 5 nights:", {k: round(v, 3) for k, v in scores_ft.items()})
+    print(
+        "Fine-tuned on the 5 nights:",
+        {k: round(v, 3) for k, v in scores_ft.items()},
+    )
     print("kappa per night:", per_night_kappa(finetuned).round(2).to_dict())
     plot_confusion(y_ft, p_ft, "Fine-tuned (rows = true stage)")
     return finetuned, scores_ft
@@ -528,6 +645,15 @@ def _(mo):
 def _(mo):
     mo.md(r"""
     *Your answer:*
+
+    a)
+    The performance or our model greatly improved, the kapa raised from 0.2 to 0.6. And the confusion matrix looks way healthier, having only a small problem predicting N1 stages.
+
+    b)
+    The architecture is identical, only the values of the weights change. The head is trained further on HMC so that it adapts to the new domain (different equipment, missing RESP channel, different patients and scorers). The base model stays frozen, so the embeddings don't change, only how the head maps them to stages. Fine-tuning needed labelled HMC data (11 training nights with expert stage labels, plus 5 validation nights to tune the learning rate and select the checkpoint) and only modest compute: the embeddings are computed once, and then just the small head (1.3 M parameters) is trained for 40 epochs. This is far cheaper than the original' pretraining, but it does require expert-labelled nights from the target hospital.
+
+    c)
+    The stage the emodel strugles with the mose is N1, probably because it's the phase inbetween being up and completly asleep
     """)
     return
 
@@ -548,9 +674,12 @@ def _(mo):
 @app.cell
 def _(NIGHTS, evaluate, load_head, per_night_kappa, plot_confusion):
     # TODO 4: load the head trained from scratch
-    random_init = load_head("checkpoints/____")
+    random_init = load_head("../checkpoints/random_init_head.pt")
     scores_rand, y_rand, p_rand = evaluate(random_init, NIGHTS)
-    print("Random init on the 5 nights:", {k: round(v, 3) for k, v in scores_rand.items()})
+    print(
+        "Random init on the 5 nights:",
+        {k: round(v, 3) for k, v in scores_rand.items()},
+    )
     print("kappa per night:", per_night_kappa(random_init).round(2).to_dict())
     plot_confusion(y_rand, p_rand, "Random init (rows = true stage)")
     return random_init, scores_rand
@@ -567,16 +696,30 @@ def _(mo):
 
 @app.cell
 def _(json, plt):
-    history = json.load(open('checkpoints/training_history.json'))
+    history = json.load(open("../checkpoints/training_history.json"))
     _fig, _axes = plt.subplots(1, 2, figsize=(10, 3.5))
     for name, h in history.items():
-        _axes[0].plot(range(1, len(h['train_loss']) + 1), h['train_loss'], label=name)
-        line, = _axes[1].plot(range(1, len(h['val_kappa']) + 1), h['val_kappa'], label=f'{name} (validation)')
-        _axes[1].plot(range(1, len(h['train_kappa']) + 1), h['train_kappa'], '--', color=line.get_color(), label=f'{name} (train)')
-    _axes[0].set_title('training loss')
-    _axes[1].set_title('kappa: training nights (dashed) vs 5 validation nights')
+        _axes[0].plot(
+            range(1, len(h["train_loss"]) + 1), h["train_loss"], label=name
+        )
+        (line,) = _axes[1].plot(
+            range(1, len(h["val_kappa"]) + 1),
+            h["val_kappa"],
+            label=f"{name} (validation)",
+        )
+        _axes[1].plot(
+            range(1, len(h["train_kappa"]) + 1),
+            h["train_kappa"],
+            "--",
+            color=line.get_color(),
+            label=f"{name} (train)",
+        )
+    _axes[0].set_title("training loss")
+    _axes[1].set_title(
+        "kappa: training nights (dashed) vs 5 validation nights"
+    )
     for _ax in _axes:
-        _ax.set_xlabel('epoch')
+        _ax.set_xlabel("epoch")
         _ax.grid(alpha=0.3)
     _axes[0].legend()
     _axes[1].legend(fontsize=7)
@@ -614,7 +757,6 @@ def _(mo):
 
 @app.cell
 def _(
-    display,
     finetuned,
     pd,
     per_night_kappa,
@@ -625,23 +767,34 @@ def _(
     scores_zs,
     zero_shot,
 ):
-    summary = pd.DataFrame({
-        "zero-shot (authors' head)": scores_zs,
-        "fine-tuned (pretrained init)": scores_ft,
-        "trained from scratch (random init)": scores_rand,
-    }).T
-    display(summary.round(3))
-    summary[["macro_F1", "kappa"]].plot.bar(figsize=(7, 3.5), rot=15, grid=True, title="Heads evaluated on the 5 unseen nights")
+    summary = pd.DataFrame(
+        {
+            "zero-shot (authors' head)": scores_zs,
+            "fine-tuned (pretrained init)": scores_ft,
+            "trained from scratch (random init)": scores_rand,
+        }
+    ).T
+    print(summary.round(3))
+    summary[["macro_F1", "kappa"]].plot.bar(
+        figsize=(7, 3.5),
+        rot=15,
+        grid=True,
+        title="Heads evaluated on the 5 unseen nights",
+    )
     plt.tight_layout()
     plt.show()
 
-    per_night = pd.DataFrame({
-        "zero-shot": per_night_kappa(zero_shot),
-        "fine-tuned": per_night_kappa(finetuned),
-        "random init": per_night_kappa(random_init),
-    })
-    display(per_night.round(2))
-    per_night.plot.bar(figsize=(8, 3.5), grid=True, rot=0, title="Kappa per night")
+    per_night = pd.DataFrame(
+        {
+            "zero-shot": per_night_kappa(zero_shot),
+            "fine-tuned": per_night_kappa(finetuned),
+            "random init": per_night_kappa(random_init),
+        }
+    )
+    print(per_night.round(2))
+    per_night.plot.bar(
+        figsize=(8, 3.5), grid=True, rot=0, title="Kappa per night"
+    )
     plt.tight_layout()
     plt.show()
     return
