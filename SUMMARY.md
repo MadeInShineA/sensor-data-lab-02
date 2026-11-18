@@ -46,7 +46,7 @@ All figures and numbers below come from the last saved run of each notebook (`__
 
 | Notebook | Training data | Validation (used for choices) | Separate test set? | Is the reported score unbiased? |
 |---|---|---|---|---|
-| Part 1 | 134 windows (first 80% of each recording) | `GroupKFold`, 5 time blocks, inside the training set | **Yes**: last 20% of each recording (35 windows) | **Yes**, but small and from the same recordings |
+| Part 1 | 134 windows (first 80% of each recording) | `GroupKFold`, 5 time blocks per activity (fold *k* = block *k* of every activity), inside the training set | **Yes**: last 20% of each recording (35 windows) | **Yes**, but small and from the same recordings |
 | Part 2 | 14 subjects in each LOSO fold | The held-out subject of each LOSO fold | **No**: the LOSO folds serve as both validation and test | **Slightly optimistic** (tuned and reported on the same folds) |
 | Part 3 | 11 HMC nights (heads trained by the instructor) | 5 other HMC nights (learning rate + best epoch) | **Yes**: 5 nights never used for training or selection | **Yes**, but only 5 nights from one hospital |
 
@@ -146,9 +146,38 @@ flowchart LR
     X --> E
 ```
 
-- **Test set:** for each activity, the **last 20% of the windows in time**, 35 windows in total.
+The split is done **separately for each activity**, then the pieces are concatenated. Every window is a 52-value feature vector:
+
+```
+One activity, windows in time order:
+[ block 0 | block 1 | block 2 | block 3 | block 4 ] [gap] [ test: last 20% ]
+└──────────── training set (5 CV blocks) ────────┘ 1 win
+```
+
+- **Test set:** for each activity, the **last 20% of the windows in time**, 35 windows in total. Every activity is therefore in the test set, in the same proportion as in the full data.
 - **Gap:** the 1 window that overlaps the first test window is removed from training (`gap_windows = 1`), so no test signal appears in the training data.
-- **Validation:** `GridSearchCV` with **`GroupKFold` (5 folds)** on the 134 training windows only. Each fold holds out one contiguous block of time of every activity.
+- **Training set:** everything before the gap, 134 windows in total.
+- **Validation:** `GridSearchCV` with **`GroupKFold` (5 folds)** on the 134 training windows only:
+  - The training windows of **each activity** are cut into **5 consecutive blocks** with ids 0 to 4 (`cv_groups`).
+  - In fold *k*, **block *k* of every activity** is the validation set, and the other 4 blocks of every activity are used for training.
+  - So every fold has all 6 activities in both training and validation, and the validation windows are continuous stretches of time, not random windows next to their own training neighbours.
+  - The `StandardScaler` of KNN and MLP is inside the pipeline, so in each fold it is fitted on the 4 training blocks only.
+
+**Activities don't have the same number of windows.** The blocks are sized relative to each activity's own length (window `i` of an activity with `n` training windows goes to block `⌊5·i / n⌋`). Each block is therefore about 20% of that activity's training windows. In absolute size, though, a block of subway is much bigger than a block of hammer:
+
+| Activity | Windows | Training | Gap | Test | Training windows per CV block (0 → 4) |
+|---|---|---|---|---|---|
+| hammer | 19 | 14 | 1 | 4 | 3, 3, 3, 3, 2 |
+| violin | 25 | 19 | 1 | 5 | 4, 4, 4, 4, 3 |
+| running | 25 | 19 | 1 | 5 | 4, 4, 4, 4, 3 |
+| elevator | 31 | 24 | 1 | 6 | 5, 5, 5, 5, 4 |
+| side_steps | 24 | 18 | 1 | 5 | 4, 4, 3, 4, 3 |
+| subway | 51 | 40 | 1 | 10 | 8, 8, 8, 8, 8 |
+| **Total** | **175** | **134** | **6** | **35** | **28, 28, 27, 28, 23** (validation size of each fold) |
+
+- **Consequence:** the class imbalance is the same everywhere. Each fold's training part, each validation fold and the test set all have the same class ratios (subway ≈ 30%, hammer ≈ 10%). The imbalance is not corrected, only kept consistent.
+- **Edge case:** an activity with fewer than 5 training windows would miss some block ids, and would be absent from the validation set of some folds. This does not happen here (the smallest is hammer, with 14).
+- **Small leak inside CV:** there is no gap between two consecutive CV blocks, so the last window of block *k* overlaps 50% with the first window of block *k+1*. The CV scores are therefore slightly optimistic. The test set is not affected, thanks to the gap.
 - **Refit:** `GridSearchCV` (`refit=True` by default) retrains the best configuration on **all 134 training windows**. This retrained model predicts the test set.
 - **Model selection:** the best model is chosen on **CV accuracy**, never on the test score. The test scores of all three models are shown, but they are not used for any decision.
 - **So the test score is unbiased.** Its limits:
