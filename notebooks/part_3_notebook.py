@@ -134,13 +134,13 @@ def _():
     from sleepfm_models import SetTransformer, SleepEventLSTMClassifier
 
     warnings.filterwarnings("ignore")
-    assert Path("../data/part-3/hdf5").exists(), (
+    assert Path("./data/part-3/hdf5").exists(), (
         "Run this notebook from the PW_SleepFM folder (the one containing data/ and checkpoints/)"
     )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("device:", device)
 
-    DATA = Path("../data/part-3")
+    DATA = Path("./data/part-3")
     NIGHTS = sorted(p.stem for p in (DATA / "hdf5").glob("*.hdf5"))
     STAGES = ["Wake", "N1", "N2", "N3", "REM"]
     print(len(NIGHTS), "nights:", NIGHTS)
@@ -265,7 +265,7 @@ def _(SetTransformer, device, json, torch):
     }
     CHUNK = 5 * 60 * 128
 
-    cfg = json.load(open("../checkpoints/model_base/config.json"))
+    cfg = json.load(open("./checkpoints/model_base/config.json"))
     base_model = SetTransformer(
         cfg["in_channels"],
         cfg["patch_size"],
@@ -276,7 +276,7 @@ def _(SetTransformer, device, json, torch):
         dropout=0.0,
     )
     state = torch.load(
-        "../checkpoints/model_base/best.pt", map_location="cpu"
+        "./checkpoints/model_base/best.pt", map_location="cpu"
     )["state_dict"]
     base_model.load_state_dict(
         {k.removeprefix("module."): v for k, v in state.items()}
@@ -432,7 +432,7 @@ def _(SleepEventLSTMClassifier, device, json, torch):
         return mask.to(device)
 
     HEAD_PARAMS = json.load(
-        open("../checkpoints/model_sleep_staging/config.json")
+        open("./checkpoints/model_sleep_staging/config.json")
     )["model_params"]
 
     def load_head(path):
@@ -543,7 +543,7 @@ def _(
 
 @app.cell
 def _(NIGHTS, evaluate, load_head, np, plot_confusion):
-    zero_shot = load_head("../checkpoints/model_sleep_staging/best.pth")
+    zero_shot = load_head("./checkpoints/model_sleep_staging/best.pth")
     scores_zs, y_zs, p_zs = evaluate(zero_shot, NIGHTS)
     print(
         "Zero-shot on the 5 nights:",
@@ -619,7 +619,7 @@ def _(mo):
 
 @app.cell
 def _(NIGHTS, evaluate, load_head, per_night_kappa, plot_confusion):
-    finetuned = load_head("../checkpoints/finetuned_head.pt")
+    finetuned = load_head("./checkpoints/finetuned_head.pt")
     scores_ft, y_ft, p_ft = evaluate(finetuned, NIGHTS)
     print(
         "Fine-tuned on the 5 nights:",
@@ -674,7 +674,7 @@ def _(mo):
 @app.cell
 def _(NIGHTS, evaluate, load_head, per_night_kappa, plot_confusion):
     # TODO 4: load the head trained from scratch
-    random_init = load_head("../checkpoints/random_init_head.pt")
+    random_init = load_head("./checkpoints/random_init_head.pt")
     scores_rand, y_rand, p_rand = evaluate(random_init, NIGHTS)
     print(
         "Random init on the 5 nights:",
@@ -696,7 +696,7 @@ def _(mo):
 
 @app.cell
 def _(json, plt):
-    history = json.load(open("../checkpoints/training_history.json"))
+    history = json.load(open("./checkpoints/training_history.json"))
     _fig, _axes = plt.subplots(1, 2, figsize=(10, 3.5))
     for name, h in history.items():
         _axes[0].plot(
@@ -743,6 +743,18 @@ def _(mo):
 def _(mo):
     mo.md(r"""
     *Your answer:*
+
+    Question 5
+
+    The difference comes only from the initialisation of the head. The pretrained head was trained by the authors on thousands of labelled nights, so before seeing any HMC night it already knows how to map SleepFM embeddings to sleep stages, how to combine the modalities, and how a night is structured (typical stage transitions, sleep cycles).
+
+    Fine-tuning only has to adapt this knowledge to HMC, while the scratch head has to learn everything from only 11 nights. Note that both heads receive the same embeddings: the base model, which turns the signals into features, is identical and frozen in both cases.
+
+    Looking at the curves, we see that the fine-tuned model has a head start, giving better performance overall, tho the scratch model catches up during the training phase, the pre-trained model still has beter generalisation.
+
+    Question 6
+
+    The model we are evaluating takes as input the SleepFM embedings of our signal, therefore the 3 versions (not fine tuned, head fine tuned, scratch) all use the same fetures embeding. We therefore can't say anything regarding using the raw features directly.
     """)
     return
 
@@ -815,6 +827,25 @@ def _(mo):
 def _(mo):
     mo.md(r"""
     *Your answer:*
+
+    Question 7
+
+    We can clearly see on the summary graphs that there is a big difference between zero-shot, fine-tuning and training from scratch. The fine-tuned model is the best on all metrics (kappa 0.66, macro-F1 0.70), followed by the scratch model (kappa 0.40) and finally zero-shot (kappa 0.20).
+
+    Since the fine-tuned and scratch models only differ by their initialisation, this shows that pretraining brings a large gain (+0.26 kappa) for the same training data. However, pretraining alone is not enough: without adaptation to HMC, the zero-shot model barely does better than chance.
+
+    Regarding the cost:
+
+    zero-shot costs nothing but doesn't work. Fine-tuning and scratch training cost exactly the same on our side (11 expert-labelled nights + 5 for validation, and little compute since only the small head is trained on precomputed embeddings). The expensive part, pretraining the base model on large unlabelled datasets and the head on thousands of labelled nights, was done once by the authors, and we reuse it for free.
+
+    Question 8
+
+    The kappa varies a lot from one night to another. For zero-shot, it goes from −0.01 to 0.53. The model completely fails on SN012, SN013 and SN017 but does decently on SN007 and SN019. The scratch model goes from 0.27 to 0.70, and the fine-tuned model is the most stable, from 0.52 to 0.74.
+
+    This shows that a single global number hides big differences between nights (different patients, possible sleep disorders, signal quality). With only 5 test nights, adding or removing one night could noticeably change the score, so the exact values are not very reliable. The ranking of the models is more trustworthy, since the fine-tuned model is the best on every one of the 5 nights.
+
+
+    The main remaining weakness is the test set itself: only 5 nights, all from the same hospital (HMC), recorded with the same equipment and labelled by the same scorers as the training nights. We therefore don't know how the fine-tuned model would perform in another hospital or with other scorers, especially since human scorers themselves don't fully agree with each other. A more reliable evaluation would need more test nights, ideally from other centres, and should report the spread across nights (e.g. mean ± standard deviation) rather than a single number.
     """)
     return
 
