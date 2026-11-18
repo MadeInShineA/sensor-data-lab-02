@@ -234,7 +234,7 @@ def _(mo):
 
     **Your answer:**
 
-    - No, the Base and TSST are not balanced, there is 63.5% of Base vs 36.5% of TSST. This is the same for all the subjects, with the TSST percentage fluacting between 35% and 40%. The metric choice should take this into account, with either selecting the F1-score or the weighted-F1-score.
+    - No, the Base and TSST are not balanced, there is 63.5% of Base vs 36.5% of TSST. This is the same for all the subjects, with the TSST percentage fluacting between 35% and 40%. The metric choice should take this into account and give the same weight to each of the 2 state.
     - There are a total of 7 features that each have 28 missing values. Those are all concentrated within the S8 subject and derived from a respiratory sensor. They could be explained by a missing respiratory sensore during a 28 window session.
     - Those observation imply that we should probably balance the data within the sets (or chose an appropriate loss function) and remove those S8 subject 28 windows
     """)
